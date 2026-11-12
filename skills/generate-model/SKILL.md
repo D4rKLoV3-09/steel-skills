@@ -5,7 +5,7 @@ description: "Build or revise Yang's interactive 3D steel model artifacts (tower
 
 # generate-model
 
-One self-contained three.js page per model, published as an Artifact (same URL for every revision). **The viewer UI and the geometry rules are code in Yang's private repo `D4rKLoV3-09/steel-skills` (folder `generate-model/`). Never re-write the viewer or the clipping by hand: write the job's data and run the scripts.** If anything is ambiguous, offer options before building.
+One self-contained three.js page per model, published as an Artifact (same URL for every revision); deliver only the artifact, never a separate HTML file. **The viewer UI and the geometry rules are code in Yang's private repo `D4rKLoV3-09/steel-skills` (folder `generate-model/`). Never re-write the viewer or the clipping by hand: write the job's data and run the scripts.** If anything is ambiguous, offer options before building.
 
 ## Setup (once per session)
 - Attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`), clone it, `npm install` in its root (browser tests only). Work in a copy of `generate-model/`.
@@ -43,7 +43,7 @@ Write `spec.json` (generate repetitive members with a short Python loop): profil
 ## 3. Verify before every publish
 - `build_model.py` validation must pass. Clash check: SAT on the real prisms, report penetrations over 0.5 mm (bolt shank through its plates is allowed). Gaps and overlaps measured on real vertices, never rounded boxes; every connection piece touches what it is joined to; every remaining gap over 0.5 mm is zero or a rule-2.3 gusset.
 - Browser checks (`tests/`): `regress.py` against the last published page when the template or data changed; `rules_check.py` and `mto_parity.py` when the template changed. Look at close-up renders of the joints Yang mentions.
-- Template changes also need the interaction checks: pan after each view preset moves the model right, 60 wheel notches keep moving, sloped measure reads true length, square measure locks to one axis, Ctrl+Z order in measure mode, untick a tower / Labels, grid label never cut by the section.
+- Template changes also need: `tests/ui_check.py` (chips select, Labels, panel on the right at 4 widths), the panel and toolbar order against section 6, hover readouts at a corner, mid-point, face centre and grid point, the selection chain of a typical member, and the Export button itself (download saves, and with a selection it exports only that, e.g. one lift unit); and the interaction checks: pan after each view preset moves the model right, 60 wheel notches keep moving, sloped measure reads true length, square measure locks to one axis, Ctrl+Z order in measure mode, untick a tower / Labels, grid label never cut by the section.
 - Report only failed checks, with numbers. Never say "fixed" without checking.
 
 ## 4. Member tags (Yang's scheme, always)
@@ -66,14 +66,17 @@ Write `spec.json` (generate repetitive members with a short Python loop): profil
 - Assembly = main member + plates, stubs, lugs and bolts welded or shop-bolted to it, by geometry (plate inside a column -> column; fin plate on a beam web -> beam; rod + 2 clevises + pins; ledger + its bolt sets).
 - Sub-assembly = one tag family inside an assembly (e.g. a landing's handrail); not for PLT, BOLT or single members.
 - Lift unit = piece as lifted: each tower split into its pre-assembled frames; loose members between frames are "<part id> (single loose piece)". Transfer beam segments go with their frame unless Yang says otherwise (ask).
-- Tower = the whole unit.
+- Members that sit on a tower (e.g. cross beams resting on a box tower) belong to that tower's lift unit. A truss lift unit is the truss that bears on its corbels or supports, incl. its own end verticals, and nothing that rests on a neighbouring tower.
+- Tower = the whole unit. A group's `label` renames its level in the selection chain (the column unit reads "Columns", not "Tower").
 
 ## 6. Data contract (what build_model.py packs into the template)
 - `meta`: title, card {title, desc (one short line), ref (drawing ref · grade)}, grade, datum_z (FFL), grand_total_label, currency, export_prefix, unit_names.
-- `header` (MTO title block), `units` + `unitKeys`, `groups` [{level, name}], `layers` [{k, n, c}] (one per member type, project layers, Ghost), `cats` [{code, title, layers, dwg}] (every layer in one MTO category), `profs` {name: {d, w, t, cat, kgm, m2m, m2m_assumed, src}} from Consteel (m2m computed = assumed), `gx`/`gy` grids with the drawing's names, `ghosts`, `notes`, `left`, `assumptions`, `noteSections`.
+- `header` (MTO title block), `units` + `unitKeys`, `groups` [{level: sub | asm | lift | tower, name, label?}], `layers` [{k, n, c}] (one per member type, project layers, Ghost), `cats` [{code, title, layers, dwg}] (every layer in one MTO category), `profs` {name: {d, w, t, cat, kgm, m2m, m2m_assumed, src}} from Consteel (m2m computed = assumed), `gx`/`gy` grids with the drawing's names, `ghosts`, `notes`, `left`, `assumptions`, `noteSections`.
 - Part: geometry from geometry.py (`ax`, `L`, `kg`, `pr`) + `t`, `ref`, `prof`, `desc`, `grade` (only if not meta.grade), `layer`, `unit`, `lu`, `tw`, `asm`, `sub`, `src`, `grid`, `plate` {L, W, t, tri} for plates, `rail`, `mto` overrides.
 - Layers and colours: one layer per member type (Columns, Beams, Ledgers, Bracing + clevises, Stubs + lugs + back plates, Splice + cap + stiffener plates, Base plates, Bolts + nuts, Ghost, plus project layers). A reference structure layer includes what is welded to it (splice rings, fin plates on an arch section go in e.g. "Arch W2 + W1"). Reference sections: W3 red, W2 orange, W1 yellow, M green, E1 cyan, E2 blue, E3 purple; splice rings neutral. Reference objects solid with their real weight; ghosts about 15 % with edges. Ties as wire rope (rope, turnbuckle, shackles, lug) when Yang specifies rope.
 - MTO grade: drawing grade when stated; G8.8 bolts; a grade Claude assumed is *S275; proprietary TBC. Unit weights and m2/m only from Consteel (`generate-mto/references/consteel_catalogue.md`, grep it).
+- Template behaviour Yang asked for (keep it): tower chips fly to the unit and select it; Grid and Labels toggles in the toolbar; the panel always on the right (narrower on small screens, never below the view); entering Sequence mode opens Select. A page cannot start a skill itself: say so if Yang asks.
+- **The MTO:** when Yang asks for "the MTO", build the same file with `generate-mto/build_mto.py` from the page's `mtoSpec`, and check it against the page export (`tests/mto_parity.py`).
 - **Not in the template yet:** bolt summary table under the Bolts + nuts layer (rows per bolt mark, sub-total per size, total; counts only what is shown), bolt and proprietary `piece` rows in `mtoSpec`, Sequence mode (6b). Add them to the template in the repo the first time a model needs them, run the tests, commit.
 
 ## 6b. Sequence mode (only when Yang asks)
