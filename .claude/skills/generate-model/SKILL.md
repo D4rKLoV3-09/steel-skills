@@ -10,7 +10,7 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 ## Setup (once per session)
 - In Claude Code you are already in the repo (`CLAUDE.md` says where things are). In a claude.ai cloud session: attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`) and clone it. `npm install` in its root before the browser tests.
 - Drawings come from `jobs/<job>/`; results go to `jobs/<job>/out/`; a model's data lives in `models/<name>/`. In Claude Code the page is the HTML file (open it in a browser); in a claude.ai session it is also published as an Artifact.
-- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `tests/` (regress, rules_check, mto_parity, ub42_from_old). Read a script's docstring, not the whole file, unless changing it.
+- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `tests/` (regress, rules_check, ui_check, retag_check, ub42_from_old). Read a script's docstring, not the whole file, unless changing it.
 - The MTO builder for "the MTO" is `generate-mto/build_mto.py` in the same repo.
 
 ## 0. Standing rules and ask-first
@@ -43,7 +43,7 @@ Write `spec.json` (generate repetitive members with a short Python loop): profil
 
 ## 3. Verify before every publish
 - `build_model.py` validation must pass. Clash check: SAT on the real prisms, report penetrations over 0.5 mm (bolt shank through its plates is allowed). Gaps and overlaps measured on real vertices, never rounded boxes; every connection piece touches what it is joined to; every remaining gap over 0.5 mm is zero or a rule-2.3 gusset.
-- Browser checks (`tests/`): `regress.py` against the last published page when the template or data changed; `rules_check.py` and `mto_parity.py` when the template changed. Look at close-up renders of the joints Yang mentions.
+- Browser checks (`tests/`): `regress.py` against the last published page when the template or data changed; `rules_check.py` and `generate-mto/tests/mto_parity.py` when the template changed. Look at close-up renders of the joints Yang mentions.
 - Template changes also need: `tests/ui_check.py` (chips select, Labels, panel on the right at 4 widths), the panel and toolbar order against section 6, hover readouts at a corner, mid-point, face centre and grid point, the selection chain of a typical member, and the Export button itself (download saves, and with a selection it exports only that, e.g. one lift unit); and the interaction checks: pan after each view preset moves the model right, 60 wheel notches keep moving, sloped measure reads true length, square measure locks to one axis, Ctrl+Z order in measure mode, untick a tower / Labels, grid label never cut by the section.
 - Report only failed checks, with numbers. Never say "fixed" without checking.
 
