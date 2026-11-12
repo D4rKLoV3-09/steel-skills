@@ -76,10 +76,10 @@ A TOWER BODY - COLUMNS, FRAMES, DIAGONALS · B RAKER FRAME AND SPLICE FRAME BEAM
  "assumptions": ["..."],
  "left_out": ["Anchor bolts - by others (GA-001 note 4)"]}
 ```
-`assumed` / `scaled` list the fields to fill red / purple (cat, grade, desc, mark, kgm, m2m, len, wid, thk, qty, set).
+`assumed` / `scaled` list the fields to fill red / purple (cat, grade, desc, mark, kgm, m2m, len, wid, thk, qty, set). `cat` = the short section label: UC, UB, IPE, HE, H, PFC, TFC, EA, UA, SHS, RHS, CHS, C, Z, FL, Plate, CHQ, Bolt, GRT, Deck, Stud, Edge, Misc.
 
 ## Verify before delivering
-Recalculate with LibreOffice (`soffice --headless --convert-to xlsx --outdir calc <file>`), then with openpyxl `data_only=True`: zero `#` errors; Sub-Total = Check row per unit; totals plausible against the previous version or the model weight; no row weighs 0 by mistake (bondek `measure` rows excepted); every ASSUMED / SCALED tag in `src` has its cell filled and nothing else is; handrail kg/m run and bondek / grating m2 present where those items exist. Render the Summary and one unit sheet (LibreOffice -> PDF -> PNG) and look: headers readable, nothing clipped, columns in order.
+Recalculate with LibreOffice (`soffice --headless --convert-to xlsx --outdir calc <file>`), then with openpyxl `data_only=True`: zero `#` errors; Sub-Total = Check row per unit; totals plausible against the previous version or the model weight; no row weighs 0 by mistake (bondek `measure` rows excepted); every ASSUMED / SCALED tag in `src` has its cell filled and nothing else is; handrail kg/m run and bondek / grating m2 present where those items exist; every row has a Grade and a `src`; every kg/m is a Consteel value or flagged NOT IN EXTRACTED CONSTEEL TABLE. Fix the spec and rebuild rather than patching cells. Render the Summary and one unit sheet (LibreOffice -> PDF -> PNG) and look: headers readable, nothing clipped, columns in order.
 
 ## Delivering
 Send the xlsx. Reply in pyramid form: **grand total (t)** -> per-unit totals and the largest categories (%) -> the 3-5 assumptions that move tonnage most. Offer to save it to the project space if it belongs to one.
