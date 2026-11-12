@@ -1,0 +1,93 @@
+---
+name: "generate-model"
+description: "Build or revise Yang's interactive 3D steel model artifacts (towers, frames, trusses, enclosures) with concentric zero-gap joints, his member tags, assembly selection and viewer tools."
+---
+
+# generate-model
+
+One self-contained three.js page per model, published as an Artifact (same URL for every revision). **The viewer UI and the geometry rules are code in Yang's private repo `D4rKLoV3-09/steel-skills` (folder `generate-model/`). Never re-write the viewer or the clipping by hand: write the job's data and run the scripts.** If anything is ambiguous, offer options before building.
+
+## Setup (once per session)
+- Attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`), clone it, `npm install` in its root (browser tests only). Work in a copy of `generate-model/`.
+- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `tests/` (regress, rules_check, mto_parity, ub42_from_old). Read a script's docstring, not the whole file, unless changing it.
+- The MTO builder for "the MTO" is `generate-mto/build_mto.py` in the same repo.
+
+## 0. Standing rules and ask-first
+- **Member tags:** always Yang's tags (section 4), never the drawing's or a supplied model's own tags. The original tag goes in `ref`; both are searchable.
+- **Bondek package (Yang's scope):** bondek always comes with shear studs and edgeform; a slab above Yang's steel means bondek even if not shown. Model deck, studs on every beam under the slab and edgeform at the slab edge, each on its own layer, ASSUMED when not on the drawings and listed in Assumptions. Defaults: Bondek II 1.0 BMT; studs 19x100 @ 300 single row; edgeform 1.2 BMT, height = slab thickness. Give these parts `mto` overrides (`measure`: deck m2, studs pcs, edgeform m) so they stay out of the steel kg (header card and MTO).
+- **Handrail:** flag top rails `rail: "top"` (the page shows kg/m run on a handrail selection; the build stops without it). Grating parts get `mto: {kind: "area", kgm: <kg/m2>, wid: ...}`.
+- **Outside model** (IFC, other artifact, HTML): ask whether to break it into selectable parts or keep one reference object.
+- **Connections:** welded = zero gap; bolted = a sensible bolted connection (plates, bolt sets, holes).
+- **Marked-up scope:** model only the highlighted scope as steel; neighbours as ghost (transparent, edges, not weighed, not selectable).
+- **Ghosts and IFC:** ask before putting ghosts into an IFC.
+- **Sequence mode:** only when Yang asks (section 6b).
+
+## 1. Reading drawings
+- Read every sheet incl. later revisions (a rev02 "for reference" sheet overrides older levels). State which sheet each tower or frame came from.
+- Each tower or frame has its own levels; never copy one elevation onto all. No elevation: say so and state the assumption.
+- Members drawn as separate pieces stay separate pieces at their own levels.
+- Model every plate, stiffener, lug, clevis, bolt (head, shank, nut) and back plate the details show, in the drawn shapes. Undimensioned size: pick a sensible value and list it. Never invent hardware; ask about unclear symbols.
+- Keep a **Left out** list while reading (item, reason, sheet), for section 8.
+- Proprietary parts with a photo or sample are modelled to look like the sample.
+
+## 2. Geometry (geometry.py does the cutting; you decide the inputs)
+Write `spec.json` (generate repetitive members with a short Python loop): profiles with real Consteel sizes; per member id, Yang tag `t`, `ref`, `prof`, work points `a`/`b`, `up` (depth direction), `rank` (column 0 < chord 1 < vertical/beam 2 < diagonal 3 < bracing 4) and `ends`. The docstring of `geometry.py` lists every option.
+1. **Concentric work points:** corner = column x beam centreline; chevron = beam centreline mid-span; X-brace = panel centre; knee without beam = one node on the column centreline; pinned rod = pin centre. Never keep IFC offsets.
+2. **Ends:** `auto` bears on every lower-rank member through the node (diagonal at a node = true notch on chord + vertical). Use `far` where a member runs over its host to the outer face (top chord over an end post), `cope` where a beam frames into an I-section web between its flanges, explicit `plane` for plates and corbels, `null` for a free square end.
+3. **Gussets (PL20) only where geometry forces a gap:** chevron pairs, braces under a deep beam, top-module channel joints. Never on a side column.
+4. Beams web vertical. Struts concentric with the frame they land on, bearing fully on a foot plate sized to the strut (flag if it passes the beam).
+5. Fin plates and stiffeners inside the flanges; column ends reach the splice or cap plate.
+6. Crossing rods in one plane: lugs where drawn, bow each rod by half a diameter + 0.5 mm at the crossing.
+7. When anything moves, move its whole assembly with one transform; split members crossing a kink. Watch mm vs m.
+
+## 3. Verify before every publish
+- `build_model.py` validation must pass. Clash check: SAT on the real prisms, report penetrations over 0.5 mm (bolt shank through its plates is allowed). Gaps and overlaps measured on real vertices, never rounded boxes; every connection piece touches what it is joined to; every remaining gap over 0.5 mm is zero or a rule-2.3 gusset.
+- Browser checks (`tests/`): `regress.py` against the last published page when the template or data changed; `rules_check.py` and `mto_parity.py` when the template changed. Look at close-up renders of the joints Yang mentions.
+- Template changes also need the interaction checks: pan after each view preset moves the model right, 60 wheel notches keep moving, sloped measure reads true length, square measure locks to one axis, Ctrl+Z order in measure mode, untick a tower / Labels, grid label never cut by the section.
+- Report only failed checks, with numbers. Never say "fixed" without checking.
+
+## 4. Member tags (Yang's scheme, always)
+| Tag | Member | Tag | Member |
+|---|---|---|---|
+| BR | Bracing (incl. inclined struts, tie-rods) | PLT | Plate: stiffener, fin, gusset, end plate, lug, flat bar |
+| P | Purlin | TC / BC / W | Truss top chord / bottom chord / web |
+| UB | All horizontal beams | GRT | Grating |
+| UC | All columns (incl. vertical posts, props) | CHQ | Chequered plate |
+| BU | Built-up I beam or column | ST | Stair |
+| C | Channel (PFC, TFC) | HR | Handrail, incl. toe board and gate |
+| L | Angle | CL | Cat ladder / cage ladder |
+| SH / RH / CH | Square / rectangular / circular hollow | | |
+- Number marks per distinct original mark (one-to-one map): `t` = Yang tag, `ref` = original tag (none if not on the drawings).
+- Other hardware: BOLT, CLV (clevis), JK, WR, SK, TBK, RB; mention them to Yang. Bondek package: BDK, SS (stud), EF (edgeform).
+- A bolt part is a set: store `qty_in`, show "Set of n bolt(s) with nuts".
+
+## 5. Grouping (written into the data)
+- Levels: Part > Sub-assembly > Assembly > Lift unit > Tower (skip a level that adds nothing).
+- Assembly = main member + plates, stubs, lugs and bolts welded or shop-bolted to it, by geometry (plate inside a column -> column; fin plate on a beam web -> beam; rod + 2 clevises + pins; ledger + its bolt sets).
+- Sub-assembly = one tag family inside an assembly (e.g. a landing's handrail); not for PLT, BOLT or single members.
+- Lift unit = piece as lifted: each tower split into its pre-assembled frames; loose members between frames are "<part id> (single loose piece)". Transfer beam segments go with their frame unless Yang says otherwise (ask).
+- Tower = the whole unit.
+
+## 6. Data contract (what build_model.py packs into the template)
+- `meta`: title, card {title, desc (one short line), ref (drawing ref · grade)}, grade, datum_z (FFL), grand_total_label, currency, export_prefix, unit_names.
+- `header` (MTO title block), `units` + `unitKeys`, `groups` [{level, name}], `layers` [{k, n, c}] (one per member type, project layers, Ghost), `cats` [{code, title, layers, dwg}] (every layer in one MTO category), `profs` {name: {d, w, t, cat, kgm, m2m, m2m_assumed, src}} from Consteel (m2m computed = assumed), `gx`/`gy` grids with the drawing's names, `ghosts`, `notes`, `left`, `assumptions`, `noteSections`.
+- Part: geometry from geometry.py (`ax`, `L`, `kg`, `pr`) + `t`, `ref`, `prof`, `desc`, `grade` (only if not meta.grade), `layer`, `unit`, `lu`, `tw`, `asm`, `sub`, `src`, `grid`, `plate` {L, W, t, tri} for plates, `rail`, `mto` overrides.
+- Layers and colours: one layer per member type (Columns, Beams, Ledgers, Bracing + clevises, Stubs + lugs + back plates, Splice + cap + stiffener plates, Base plates, Bolts + nuts, Ghost, plus project layers). A reference structure layer includes what is welded to it (splice rings, fin plates on an arch section go in e.g. "Arch W2 + W1"). Reference sections: W3 red, W2 orange, W1 yellow, M green, E1 cyan, E2 blue, E3 purple; splice rings neutral. Reference objects solid with their real weight; ghosts about 15 % with edges. Ties as wire rope (rope, turnbuckle, shackles, lug) when Yang specifies rope.
+- MTO grade: drawing grade when stated; G8.8 bolts; a grade Claude assumed is *S275; proprietary TBC. Unit weights and m2/m only from Consteel (`generate-mto/references/consteel_catalogue.md`, grep it).
+- **Not in the template yet:** bolt summary table under the Bolts + nuts layer (rows per bolt mark, sub-total per size, total; counts only what is shown), bolt and proprietary `piece` rows in `mtoSpec`, Sequence mode (6b). Add them to the template in the repo the first time a model needs them, run the tests, commit.
+
+## 6b. Sequence mode (only when Yang asks)
+- Never edit the original: copy the artifact as "<title> with-sequence".
+- "Model" | "Sequence" chips at the end of the toolbar; step bar at the bottom (previous, numbered chips, next, Play/Pause that freezes mid-step, Free camera that never moves the camera).
+- Step text in the Select box (title, "Step n / N", text, colour key: Coming off, Crane + boom, Slings, Lever hoist); no overlay card. Highlight what actually moves; merge steps that happen together.
+- Rigging: hook straight under the boom tip; boom tip at one height per lift, only the rope pays out; lugs bolted into existing holes where possible. Lever-hoist release: level while held, then tilts about the lug line until the CG hangs under the hook, tag lines level it before landing.
+- No clashes ever: boom (r 320 mm), rope and load path (incl. tilt) against all remaining structure and ground, every step on real triangles; search crane positions and tip heights; report minimum clearance per lift. If a lift cannot be done, say so with reasons and alternatives. Removed items stay removed.
+
+## 8. Each revision
+1. Read all of Yang's points; ask with options if one is ambiguous.
+2. For a defect, find the root cause and say why it happened.
+3. Change `spec.json` / data with a Python script (assert every replacement), rebuild with `geometry.py` and `build_model.py`.
+4. Run the section 3 checks. Publish to the same artifact URL.
+5. Template or script change: commit and push to the repo (message says what and why).
+6. Reply short: **Assumptions to confirm** (skip if none), **Left out of the model** (always, bold heading: each drawn item not modelled with why and sheet, counts or % where many; or exactly "Nothing left out."), **Decisions for you** (skip if none). No recap of what changed.
+7. Save new standing rules to memory when Yang states them.
