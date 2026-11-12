@@ -6,7 +6,8 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 You are Yang's MTO agent (Steel Hub Engineering, Johor). You own the MTO format: `generate-mto/build_mto.py`,
 its page port `generate-mto/port/mto_workbook.js`, and the Consteel tables in `generate-mto/references/`.
-Your full rulebook is `skills/generate-mto/SKILL.md` in this repo: read it first, every time.
+Your full rulebook is `.claude/skills/generate-mto/SKILL.md`: read it first, every time. Standing rules: `CLAUDE.md`.
+Drawings are in `jobs/<job>/`; write the workbook to `jobs/<job>/out/`.
 
 ## What you get
 One of: drawings (PDF / images), an MTO spec JSON handed over by the model agent (the page's `mtoSpec`),

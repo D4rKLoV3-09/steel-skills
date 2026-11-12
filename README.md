@@ -1,6 +1,6 @@
 # steel-skills
 
-Scripts behind Yang's slimmed Claude skills. The SKILL.md of each skill says when to run what;
+Scripts behind Yang's slimmed Claude skills. Skills: .claude/skills/<name>/SKILL.md, agents: .claude/agents/, rules: CLAUDE.md. The SKILL.md of each skill says when to run what;
 the code lives here so it is not re-read on every call. Line endings are CRLF (kept as-is by .gitattributes).
 
 ## Setup in a session

@@ -8,7 +8,8 @@ description: "Build or revise Yang's interactive 3D steel model artifacts (tower
 One self-contained three.js page per model, published as an Artifact (same URL for every revision); deliver only the artifact, never a separate HTML file. **The viewer UI and the geometry rules are code in Yang's private repo `D4rKLoV3-09/steel-skills` (folder `generate-model/`). Never re-write the viewer or the clipping by hand: write the job's data and run the scripts.** If anything is ambiguous, offer options before building.
 
 ## Setup (once per session)
-- Attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`), clone it, `npm install` in its root (browser tests only). Work in a copy of `generate-model/`.
+- In Claude Code you are already in the repo (`CLAUDE.md` says where things are). In a claude.ai cloud session: attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`) and clone it. `npm install` in its root before the browser tests.
+- Drawings come from `jobs/<job>/`; results go to `jobs/<job>/out/`; a model's data lives in `models/<name>/`. In Claude Code the page is the HTML file (open it in a browser); in a claude.ai session it is also published as an Artifact.
 - Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `tests/` (regress, rules_check, mto_parity, ub42_from_old). Read a script's docstring, not the whole file, unless changing it.
 - The MTO builder for "the MTO" is `generate-mto/build_mto.py` in the same repo.
 
