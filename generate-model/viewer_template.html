@@ -1,0 +1,903 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>@@TITLE@@</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-viewport CAD workbench - toolbar over the 3D view (left), fixed inspector column (right) */
+:root{
+  --bg:#eef1f4; --panel:#f8f9fb; --ink:#1c232b; --muted:#5d6874; --line:#d3d9e0; --chip:#e3e8ee;
+  --accent:#b8611f; --sel:#ff7a1a; --meas:#d026c8; --grid:#a8562e; --weight:#c4271f; --view:#dfe4ea;
+  --font:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#14181d; --panel:#1b2027; --ink:#e3e8ee; --muted:#93a0ad; --line:#2f3741; --chip:#262d36;
+  --accent:#e08a45; --sel:#ff8f3a; --meas:#ee55e6; --grid:#d7865a; --weight:#ff5a4f; --view:#e8ecf0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14181d; --panel:#1b2027; --ink:#e3e8ee; --muted:#93a0ad; --line:#2f3741; --chip:#262d36;
+  --accent:#e08a45; --sel:#ff8f3a; --meas:#ee55e6; --grid:#d7865a; --weight:#ff5a4f; --view:#e8ecf0; color-scheme:dark}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:13px}
+#app{height:100%;display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:auto minmax(0,1fr);
+  padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+#tb{grid-column:1;grid-row:1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
+#tb .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+button,.chip{font:inherit;font-size:12px;color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:5px;padding:5px 9px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#view{grid-column:1;grid-row:2;position:relative;overflow:hidden;background:var(--view)}
+#view canvas{display:block;width:100%;height:100%;touch-action:none}
+#ov{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;transform:translate(-50%,-50%);font-family:var(--mono);font-size:11px;white-space:nowrap;padding:1px 4px;border-radius:3px}
+.glbl{color:var(--grid);background:color-mix(in srgb,var(--view) 80%,transparent)}
+.gbub{color:var(--grid);border:1.5px solid var(--grid);border-radius:50%;min-width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--view);font-weight:500;padding:0 3px}
+.ttag{color:var(--ink);background:var(--panel);border:1px solid var(--line);font-family:var(--font);font-weight:600;font-size:12px}
+.mlbl{color:#fff;background:var(--meas);font-weight:500}
+#readout{position:absolute;left:10px;bottom:10px;font-family:var(--mono);font-size:11px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:3px 7px;pointer-events:none}
+#toast{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:5px 12px;border-radius:5px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.show{opacity:.92}
+#load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
+#panel{grid-column:2;grid-row:1 / span 2;overflow-y:auto;border-left:1px solid var(--line);background:var(--panel);padding-bottom:env(safe-area-inset-bottom,0px)}
+details{border-bottom:1px solid var(--line)}
+.kgm{color:var(--weight);font-weight:700;font-size:16px}
+#card{padding:14px 14px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+#card .ct{font:700 20px/1.25 var(--font);color:var(--ink)}
+#card .cd{font:400 13px/1.4 var(--font);color:var(--muted)}
+#card .cr{font:400 12px/1.4 var(--mono);color:var(--ink);overflow-wrap:anywhere}
+#card .cn{font:400 14px/1.4 var(--font);color:var(--ink);font-variant-numeric:tabular-nums}
+#card .cn b{color:var(--weight);font-weight:700}
+summary{list-style:none;cursor:pointer;padding:10px 14px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸";font-size:11px}
+details[open]>summary::before{content:"▾"}
+.sec{padding:0 14px 12px;display:flex;flex-direction:column;gap:8px}
+.crumbs{display:flex;flex-wrap:wrap;gap:4px}
+.crumbs button{font-size:11px;padding:3px 7px}
+.info{font-size:12px;line-height:1.5}
+.info .mark{font-family:var(--mono);font-size:14px;font-weight:500}
+.info dl{display:grid;grid-template-columns:88px minmax(0,1fr);gap:2px 8px;margin:6px 0 0}
+.info dt{color:var(--muted)} .info dd{margin:0;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.wt{color:var(--weight);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums}
+.btns{display:flex;flex-wrap:wrap;gap:5px}
+input[type=text]{font:inherit;font-size:12px;width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
+.res{max-height:180px;overflow-y:auto;display:flex;flex-direction:column}
+.res button{text-align:left;background:none;border:none;border-bottom:1px solid var(--line);border-radius:0;font-family:var(--mono);font-size:11.5px;display:flex;justify-content:space-between;gap:8px}
+.row{display:flex;align-items:center;gap:8px}
+.lay{display:grid;grid-template-columns:18px 14px minmax(0,1fr) auto;align-items:center;gap:6px;font-size:12px}
+.sw{width:14px;height:14px;border-radius:3px;cursor:pointer;border:1px solid var(--line)}
+.lay .nm{cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lay .ct{color:var(--muted);font-variant-numeric:tabular-nums;font-size:11px}
+.op{grid-column:2 / span 3;display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted)}
+.op input{flex:1}
+.sub{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.key{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11px;color:var(--muted)}
+.key span{display:inline-flex;align-items:center;gap:4px}
+.key svg{width:12px;height:12px}
+.notes{font-size:12px;line-height:1.5;color:var(--ink)} .notes ul{margin:4px 0 8px;padding-left:16px} .notes li{margin-bottom:3px}
+select{font:inherit;font-size:12px;padding:4px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
+input[type=range]{accent-color:var(--accent)}
+input[type=checkbox]{accent-color:var(--accent);margin:0}
+@media (max-width:820px){
+  html,body{overflow:auto}
+  #app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 62vh auto;height:auto}
+  #panel{grid-column:1;grid-row:3;border-left:none;overflow:visible}
+  #tb{padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px))}
+}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+
+<div id="app">
+  <div id="tb" role="toolbar" aria-label="Views">
+    <button id="vIso">ISO</button><button id="vPlan">Plan</button><button id="vFront">Elevation front</button><button id="vSide">Elevation side</button>
+    <span class="sep"></span><span id="chips" style="display:contents"></span><span class="sep"></span>
+    <button id="bGrid" class="on">Grid</button><button id="bMeas">Measure</button>
+  </div>
+  <div id="view"><div id="load">Loading model…</div><div id="ov"></div><div id="readout" hidden></div><div id="toast"></div></div>
+  <aside id="panel">
+    <div id="card"><div class="ct" id="cTitle"></div><div class="cd" id="cDesc"></div><div class="cr" id="cRef"></div><div class="cn" id="cCount"></div></div>
+    <details open id="dSel"><summary>Select</summary><div class="sec">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="info" id="info"><span style="color:var(--muted)">Tap a member to select it. Tap again to step up to its lift unit and tower.</span></div>
+      <div class="btns" id="prevnext" hidden><button id="bPrev">Prev</button><button id="bNext">Next</button><button id="bAllInst">Show all</button></div>
+      <div class="btns"><button id="bOnly">Show only</button><button id="bShowAll">Show all</button><button id="bHide">Hide</button></div>
+      <div class="btns"><button id="bSelAll">Select all</button><button id="bUndo">Undo</button><button id="bExport">Export</button></div>
+      <input type="text" id="q" placeholder="Search, e.g. UC, C, PLT, BR." autocomplete="off">
+      <div class="res" id="res"></div>
+    </div></details>
+    <details id="dCut"><summary>Section</summary><div class="sec">
+      <div class="row"><select id="cutDir" aria-label="Section direction"><option value="top">Top</option><option value="left">Left</option><option value="right">Right</option><option value="front">Front</option><option value="back">Back</option></select>
+        <button id="cutOn">Section on</button><button id="cutOff">Clear section</button></div>
+      <input type="range" id="cutPos" min="0" max="1000" value="500" aria-label="Section position">
+    </div></details>
+    <details id="dLay"><summary>Layers</summary><div class="sec">
+      <div id="layers" style="display:flex;flex-direction:column;gap:5px"></div>
+      <div class="sub">Annotation</div>
+      <label class="row"><input type="checkbox" id="cLabels" checked> Labels (tags, grid dimensions, measurements)</label>
+      <div class="sub">Towers</div>
+      <div id="towers" style="display:flex;flex-direction:column;gap:4px"></div>
+    </div></details>
+    <details id="dMeas"><summary>Measure</summary><div class="sec">
+      <div class="row"><label class="row"><input type="checkbox" id="cMag" checked> Magnet</label><label class="row"><input type="checkbox" id="cLock" checked> Lock to 90°</label></div>
+      <div class="key">
+        <span><svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Corner</span>
+        <span><svg viewBox="0 0 12 12"><path d="M6 1 L11 6 L6 11 L1 6Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Midpoint</span>
+        <span><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>Centre</span>
+        <span><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Grid</span>
+        <span><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 1.6"/></svg>Surface</span>
+      </div>
+      <div class="btns"><button id="bMeas2">Measure</button><button id="bClrMeas">Clear all</button></div>
+    </div></details>
+    <details id="dNotes"><summary>Notes</summary><div class="sec notes" id="notes"></div></details>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script id="d64" type="application/octet-stream">@@DATA@@</script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let D, parts = [], scene, camera, renderer, controls, raycaster = new THREE.Raycaster();
+let C0 = [0, 0, 0]; // model offset (mm)
+const W = (x, y, z) => new THREE.Vector3((x - C0[0]) / 1000, (z - C0[2]) / 1000, -(y - C0[1]) / 1000);
+const fmt = (v, d = 0) => v.toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d});
+function toast(t){ const e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(() => e.classList.remove('show'), 1800); }
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+async function loadData(){
+  const b64 = $('d64').textContent.trim();
+  const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot unpack the model data (DecompressionStream missing). Open the page in a current Chrome, Edge, Safari or Firefox.');
+  const ds = new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return JSON.parse(await new Response(ds).text());
+}
+
+/* ---------------- state ---------------- */
+const S = { hidden: new Set(), towerOff: new Set(), layerOff: new Set(), layerOp: {}, sel: [], selChain: [], selLevel: 0, inst: null, instI: 0,
+  undo: [], measure: false, meas: [], pending: null, labels: true, grid: true, cut: null };
+let layerMeshes = [], layerEdges = [], ghostObjs = [], selMesh = null, selBox = null, clipPlanes = [];
+let gridGroup, gridLabels = [], towerTags = [], occCache = {key: '', vis: {}};
+
+function visible(i){ const p = parts[i]; return !S.hidden.has(i) && !S.towerOff.has(p.unit) && !S.layerOff.has(p.layer); }
+
+/* ---------------- geometry ---------------- */
+function prepParts(){
+  let lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+  for (const p of D.parts) for (const pr of p.pr) for (const f of pr) for (const v of f) for (let k = 0; k < 3; k++){ lo[k] = Math.min(lo[k], v[k]); hi[k] = Math.max(hi[k], v[k]); }
+  C0 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (D.meta.datum_z ?? lo[2])];
+  D.parts.forEach((p, i) => {
+    const pos = [], nor = [], edges = [], corners = [], mids = [], cents = [];
+    const ax = new THREE.Vector3(p.ax[0], p.ax[2], -p.ax[1]).normalize();
+    const caps = {};
+    for (const pr of p.pr){
+      const seen = new Set();
+      for (const f of pr){
+        const V = f.map(v => W(v[0], v[1], v[2]));
+        const n = new THREE.Vector3();
+        for (let k = 0; k < V.length; k++){ const a = V[k], b = V[(k + 1) % V.length]; n.x += (a.y - b.y) * (a.z + b.z); n.y += (a.z - b.z) * (a.x + b.x); n.z += (a.x - b.x) * (a.y + b.y); }
+        n.normalize();
+        for (let k = 1; k < V.length - 1; k++) for (const q of [V[0], V[k], V[k + 1]]){ pos.push(q.x, q.y, q.z); nor.push(n.x, n.y, n.z); }
+        // polygon centroid (area weighted)
+        let A = 0; const c = new THREE.Vector3();
+        for (let k = 1; k < V.length - 1; k++){ const t = new THREE.Vector3().subVectors(V[k], V[0]).cross(new THREE.Vector3().subVectors(V[k + 1], V[0])).length() / 2; A += t; c.addScaledVector(new THREE.Vector3().add(V[0]).add(V[k]).add(V[k + 1]).multiplyScalar(1 / 3), t); }
+        if (A > 0) c.multiplyScalar(1 / A); cents.push(c);
+        if (Math.abs(n.dot(ax)) > 0.999){ const key = Math.round(V[0].dot(ax) * 1000); (caps[key] = caps[key] || {A: 0, c: new THREE.Vector3()}); caps[key].A += A; caps[key].c.addScaledVector(c, A); }
+        for (let k = 0; k < V.length; k++){
+          const a = V[k], b = V[(k + 1) % V.length];
+          edges.push(a.x, a.y, a.z, b.x, b.y, b.z);
+          mids.push(new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5));
+          const key = a.x.toFixed(4) + ',' + a.y.toFixed(4) + ',' + a.z.toFixed(4);
+          if (!seen.has(key)){ seen.add(key); corners.push(a.clone()); }
+        }
+      }
+    }
+    for (const k in caps) if (caps[k].A > 0) cents.push(caps[k].c.multiplyScalar(1 / caps[k].A));
+    const box = new THREE.Box3(); for (let k = 0; k < pos.length; k += 3) box.expandByPoint(new THREE.Vector3(pos[k], pos[k + 1], pos[k + 2]));
+    const sloped = Math.max(Math.abs(p.ax[0]), Math.abs(p.ax[1]), Math.abs(p.ax[2])) < 0.9995;
+    parts.push(Object.assign({}, p, {i, pos: new Float32Array(pos), nor: new Float32Array(nor), edges: new Float32Array(edges), corners, mids, cents, box, sphere: box.getBoundingSphere(new THREE.Sphere()), axw: ax, sloped}));
+    delete parts[i].pr;
+  });
+  D.parts = null;
+}
+
+function mat(color, op){
+  return new THREE.MeshStandardMaterial({color, metalness: 0.25, roughness: 0.62, side: THREE.DoubleSide, transparent: op < 1, opacity: op, depthWrite: op >= 0.5, clippingPlanes: clipPlanes, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1});
+}
+function buildLayers(){
+  for (const m of layerMeshes) if (m){ scene.remove(m); m.geometry.dispose(); }
+  for (const m of layerEdges) if (m){ scene.remove(m); m.geometry.dispose(); }
+  layerMeshes = []; layerEdges = [];
+  D.layers.forEach((L, li) => {
+    if (L.k === 'ghost'){ layerMeshes.push(null); layerEdges.push(null); return; }
+    const ids = parts.filter(p => p.layer === li && visible(p.i)).map(p => p.i);
+    let n = 0, ne = 0; for (const i of ids){ n += parts[i].pos.length; ne += parts[i].edges.length; }
+    const pos = new Float32Array(n), nor = new Float32Array(n), tri = new Int32Array(n / 9), ep = new Float32Array(ne);
+    let o = 0, t = 0, oe = 0;
+    for (const i of ids){ const p = parts[i]; pos.set(p.pos, o); nor.set(p.nor, o); for (let k = 0; k < p.pos.length / 9; k++) tri[t++] = i; o += p.pos.length; ep.set(p.edges, oe); oe += p.edges.length; }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    const op = S.layerOp[li] ?? 1;
+    const m = new THREE.Mesh(g, mat(new THREE.Color(L.c), op)); m.userData = {li, tri}; m.frustumCulled = false;
+    scene.add(m); layerMeshes.push(m);
+    const ge = new THREE.BufferGeometry(); ge.setAttribute('position', new THREE.BufferAttribute(ep, 3));
+    const le = new THREE.LineSegments(ge, new THREE.LineBasicMaterial({color: 0x10161c, transparent: true, opacity: 0.18 * op, clippingPlanes: clipPlanes}));
+    le.frustumCulled = false; scene.add(le); layerEdges.push(le);
+  });
+  const gl = D.layers.findIndex(l => l.k === 'ghost');
+  for (const o of ghostObjs) o.visible = !S.layerOff.has(gl) && S.ghostShown !== false;
+  occCache.key = '';
+  updateSelMesh(); updateCounts();
+}
+function buildGhosts(){
+  const gl = D.layers.findIndex(l => l.k === 'ghost');
+  const op = S.layerOp[gl] ?? 0.15;
+  for (const g of D.ghosts){
+    const geo = new THREE.BoxGeometry(g.s[0] / 1000, g.s[2] / 1000, g.s[1] / 1000);
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color: 0x9aa3ad, transparent: true, opacity: op, depthWrite: false, clippingPlanes: clipPlanes}));
+    m.position.copy(W(g.c[0], g.c[1], g.c[2]));
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color: 0x6f7a85, transparent: true, opacity: 0.6, clippingPlanes: clipPlanes}));
+    m.add(e); m.userData.ghost = g; scene.add(m); ghostObjs.push(m);
+  }
+}
+
+/* ---------------- selection ---------------- */
+function chainFor(i){
+  const p = parts[i];
+  const lv = [['Part', [i], undefined]];
+  if (p.sub >= 0) lv.push(['Sub-assembly', parts.filter(q => q.sub === p.sub).map(q => q.i), p.sub]);
+  lv.push(['Assembly', parts.filter(q => q.asm === p.asm).map(q => q.i), p.asm]);
+  lv.push(['Lift unit', parts.filter(q => q.lu === p.lu).map(q => q.i), p.lu]);
+  lv.push(['Tower', parts.filter(q => q.tw === p.tw).map(q => q.i), p.tw]);
+  const ch = [];
+  for (const [name, ids, g] of lv){
+    const prev = ch[ch.length - 1];
+    if (prev && prev.ids.length === ids.length){ prev.name += ' = ' + name; if (g !== undefined) prev.g = g; continue; }
+    ch.push({name, ids, g});
+  }
+  return ch;
+}
+function select(ids, chain, level){
+  S.sel = ids; S.selChain = chain || []; S.selLevel = level || 0; updateSelMesh(); renderInfo();
+}
+function updateSelMesh(){
+  if (selMesh){ scene.remove(selMesh); selMesh.geometry.dispose(); selMesh = null; }
+  if (selBox){ scene.remove(selBox); selBox = null; }
+  const ids = S.sel.filter(visible); if (!ids.length) return;
+  let n = 0; for (const i of ids) n += parts[i].pos.length;
+  const pos = new Float32Array(n), nor = new Float32Array(n); let o = 0;
+  for (const i of ids){ pos.set(parts[i].pos, o); nor.set(parts[i].nor, o); o += parts[i].pos.length; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  selMesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({color: new THREE.Color(css('--sel') || '#ff7a1a'), emissive: 0x552200, metalness: 0.1, roughness: 0.5, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, clippingPlanes: clipPlanes}));
+  selMesh.frustumCulled = false; scene.add(selMesh);
+  const b = new THREE.Box3(); for (const i of ids) b.union(parts[i].box);
+  const sz = b.getSize(new THREE.Vector3());
+  if (Math.max(sz.x, sz.y, sz.z) < 0.8){ const pad = 0.15; b.expandByScalar(pad); selBox = new THREE.Box3Helper(b, new THREE.Color(css('--sel') || '#ff7a1a')); selBox.material.transparent = true; selBox.material.opacity = 0.6; scene.add(selBox); }
+}
+function groupStats(ids){
+  const b = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9]; let kg = 0;
+  for (const i of ids){ const p = parts[i]; kg += p.kg; const bb = p.box; const lo = [bb.min.x, -bb.max.z, bb.min.y], hi = [bb.max.x, -bb.min.z, bb.max.y];
+    for (let k = 0; k < 3; k++){ b[k] = Math.min(b[k], lo[k]); b[k + 3] = Math.max(b[k + 3], hi[k]); } }
+  return {kg, L: (b[3] - b[0]) * 1000, Wd: (b[4] - b[1]) * 1000, H: (b[5] - b[2]) * 1000};
+}
+/* handrail: shown whenever a selection is mostly HR parts (by weight) and holds its top rail */
+function hrRun(ids, kg){
+  let hr = 0, run = 0;
+  for (const i of ids){ const p = parts[i]; if (/^HR/i.test(p.t)) hr += p.kg; if (p.rail === 'top') run += p.L; }
+  if (!run || hr < kg / 2) return '';
+  return `<dt>Per metre run</dt><dd><b class="kgm">${fmt(kg / (run / 1000), 1)} kg/m</b> (run ${fmt(run)} mm along top rail)</dd>`;
+}
+function renderInfo(){
+  const cr = $('crumbs'); cr.innerHTML = '';
+  S.selChain.forEach((c, k) => { const b = document.createElement('button'); b.textContent = c.name; if (k === S.selLevel) b.classList.add('on');
+    b.onclick = () => { S.selLevel = k; S.sel = c.ids; updateSelMesh(); renderInfo(); }; cr.appendChild(b); });
+  const el = $('info'); const ids = S.sel;
+  $('prevnext').hidden = !(S.inst && S.inst.length > 1);
+  if (!ids.length){ el.innerHTML = '<span style="color:var(--muted)">Tap a member to select it. Tap again to step up to its lift unit and tower.</span>'; return; }
+  const lvl = S.selChain[S.selLevel];
+  if (ids.length === 1){
+    const p = parts[ids[0]];
+    el.innerHTML = `<div class="mark"></div><div class="wt">${fmt(p.kg, 1)} kg</div><dl>
+      <dt>Description</dt><dd class="ds"></dd><dt>Grade</dt><dd class="gr"></dd>${p.plate ? `<dt>Plate size</dt><dd>${fmt(p.plate.L)} × ${fmt(p.plate.W)} × ${p.plate.t} mm${p.plate.tri ? ' (triangle)' : ''}</dd>` : `<dt>Cut length</dt><dd>${fmt(p.L, 1)} mm</dd>`}
+      <dt>Ref. mark</dt><dd class="rm"></dd><dt>Position</dt><dd>${p.grid}</dd><dt>Lift unit</dt><dd class="lu"></dd><dt>Tower</dt><dd>${D.groups[p.tw].name}</dd><dt>Source</dt><dd class="src"></dd></dl>`;
+    el.querySelector('.mark').textContent = p.t; el.querySelector('.ds').textContent = p.desc || p.prof;
+    el.querySelector('.rm').textContent = p.ref ? p.ref + ' (drawing tag)' : '- (not marked on drawings)';
+    el.querySelector('.gr').textContent = p.grade || D.meta.grade || '*S275';
+    el.querySelector('.lu').textContent = D.groups[p.lu].name; el.querySelector('.src').textContent = p.src;
+  } else {
+    const st = groupStats(ids);
+    let name = lvl && lvl.g !== undefined ? D.groups[lvl.g].name : (S.selName || 'Selection');
+    if (S.inst && S.inst.length > 1 && S.instI >= 0 && ids.length === 1) name = parts[ids[0]].t;
+    el.innerHTML = `<div class="mark"></div><div class="wt">${fmt(st.kg, 1)} kg</div><dl>
+      <dt>Size L×W×H</dt><dd>${fmt(st.L)} × ${fmt(st.Wd)} × ${fmt(st.H)} mm</dd><dt>Parts</dt><dd>${ids.length}</dd>${hrRun(ids, st.kg)}</dl>`;
+    el.querySelector('.mark').textContent = name;
+  }
+}
+function pickAt(cx, cy){
+  const r = renderer.domElement.getBoundingClientRect();
+  const v = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(v, camera);
+  const hits = raycaster.intersectObjects(layerMeshes.filter(m => m && m.visible && (S.layerOp[m.userData.li] ?? 1) > 0.02), false);
+  for (const h of hits){ if (!keptByCut(h.point)) continue; return {i: h.object.userData.tri[h.faceIndex], point: h.point, dist: h.distance}; }
+  return null;
+}
+function keptByCut(p){ for (const pl of clipPlanes) if (pl.distanceToPoint(p) < -1e-4) return false; return true; }
+
+/* ---------------- visibility + undo ---------------- */
+function pushUndo(){ S.undo.push({hidden: new Set(S.hidden), towerOff: new Set(S.towerOff), layerOff: new Set(S.layerOff), ghost: S.ghostShown}); if (S.undo.length > 60) S.undo.shift(); }
+function applyVis(){ buildLayers(); syncChecks(); updateCounts(); }
+function showOnly(){ if (!S.sel.length) return toast('Select something first'); pushUndo(); const keep = new Set(S.sel); S.hidden = new Set(parts.filter(p => !keep.has(p.i)).map(p => p.i)); S.ghostShown = false; applyVis(); }
+function showAll(){ pushUndo(); S.hidden.clear(); S.towerOff.clear(); S.layerOff.clear(); S.ghostShown = true; applyVis(); }
+function hideSel(){ if (!S.sel.length) return toast('Select something first'); pushUndo(); for (const i of S.sel) S.hidden.add(i); select([], [], 0); applyVis(); }
+function undo(){ const u = S.undo.pop(); if (!u) return toast('Nothing to undo'); S.hidden = u.hidden; S.towerOff = u.towerOff; S.layerOff = u.layerOff; S.ghostShown = u.ghost; applyVis(); toast('Undone'); }
+
+/* ---------------- UI build ---------------- */
+function buildPanel(){
+  // tower chips
+  const ch = $('chips');
+  D.groups.forEach((g, gi) => { if (g.level !== 'tower') return; const b = document.createElement('button'); b.textContent = g.name.replace('Truss ', ''); b.onclick = () => fitIds(parts.filter(p => p.tw === gi && visible(p.i)).map(p => p.i), true); ch.appendChild(b); });
+  // layers
+  const L = $('layers'); L.innerHTML = '';
+  D.layers.forEach((l, li) => {
+    const row = document.createElement('div'); row.className = 'lay';
+    row.innerHTML = `<input type="checkbox" id="lay${li}" checked aria-label="Show ${l.n}"><span class="sw" style="background:${l.c}"></span><span class="nm"></span><span class="ct" id="ct${li}"></span><div class="op" hidden><span>Opacity</span><input type="range" min="0" max="100" value="${l.k === 'ghost' ? 15 : 100}" id="op${li}" aria-label="${l.n} opacity"><span id="opv${li}">${l.k === 'ghost' ? 15 : 100}%</span></div>`;
+    row.querySelector('.nm').textContent = l.n;
+    const tg = () => { const o = row.querySelector('.op'); o.hidden = !o.hidden; };
+    row.querySelector('.nm').onclick = tg; row.querySelector('.sw').onclick = tg;
+    row.querySelector('input[type=checkbox]').onchange = e => { pushUndo(); if (e.target.checked) S.layerOff.delete(li); else S.layerOff.add(li); applyVis(); };
+    row.querySelector('input[type=range]').oninput = e => { const v = +e.target.value / 100; S.layerOp[li] = v; $('opv' + li).textContent = e.target.value + '%';
+      if (l.k === 'ghost'){ for (const o of ghostObjs) o.material.opacity = v; } else { const m = layerMeshes[li]; if (m){ m.material.opacity = v; m.material.transparent = v < 1; m.material.depthWrite = v >= 0.5; m.material.needsUpdate = true; layerEdges[li].material.opacity = 0.18 * v; } } occCache.key = ''; };
+    L.appendChild(row);
+  });
+  const T = $('towers'); T.innerHTML = '';
+  D.units.forEach((u, ui) => { const r = document.createElement('label'); r.className = 'row'; r.innerHTML = `<input type="checkbox" id="tw${ui}" checked> <span></span>`; r.querySelector('span').textContent = u;
+    r.querySelector('input').onchange = e => { pushUndo(); if (e.target.checked) S.towerOff.delete(ui); else S.towerOff.add(ui); applyVis(); }; T.appendChild(r); });
+  // notes
+  const N = $('notes');
+  const ul = (title, arr) => { const h = document.createElement('div'); h.className = 'sub'; h.textContent = title; N.appendChild(h); const u = document.createElement('ul'); for (const a of arr){ const li = document.createElement('li'); li.textContent = a; u.appendChild(li); } N.appendChild(u); };
+  (D.noteSections || []).forEach(s => ul(s.title, s.from === 'assumptions' ? D.assumptions.filter(a => !a.startsWith('Not modelled')) : s.from === 'left' ? D.left.concat(s.extra || []) : s.items));
+  syncChecks();
+}
+function syncChecks(){
+  D.layers.forEach((l, li) => { const c = $('lay' + li); if (c) c.checked = !S.layerOff.has(li); });
+  D.units.forEach((u, ui) => { const c = $('tw' + ui); if (c) c.checked = !S.towerOff.has(ui); });
+}
+function updateCounts(){ D.layers.forEach((l, li) => { const c = $('ct' + li); if (!c) return; c.textContent = l.k === 'ghost' ? D.ghosts.length : parts.filter(p => p.layer === li && visible(p.i)).length; }); }
+
+/* ---------------- search ---------------- */
+function doSearch(){
+  const q = $('q').value.trim().toUpperCase(); const R = $('res'); R.innerHTML = '';
+  if (!q) return;
+  const m = new Map();
+  const hit = s => { if (!s) return false; s = s.toUpperCase(); return s.startsWith(q) || s.includes(q) || s.split(/[-\s]/).some(w => w.startsWith(q)); };
+  for (const p of parts){ if (hit(p.t) || hit(p.ref)) { if (!m.has(p.t)) m.set(p.t, []); m.get(p.t).push(p.i); } }
+  [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'en', {numeric: true})).slice(0, 200).forEach(([t, ids]) => {
+    const b = document.createElement('button'); b.innerHTML = '<span></span><span></span>'; const rf = parts[ids[0]].ref;
+    b.children[0].textContent = rf && rf !== t ? t + '  ·  ' + rf : t; b.children[1].textContent = '×' + ids.length;
+    b.onclick = () => { S.inst = ids.length > 1 ? ids : null; S.instI = -1; S.selName = t; select(ids, [{name: t, ids}], 0); fitIds(ids, true); };
+    R.appendChild(b);
+  });
+}
+function stepInst(d){ if (!S.inst) return; S.instI = (S.instI + d + S.inst.length) % S.inst.length; const i = S.inst[S.instI]; select([i], [{name: 'Part', ids: [i]}, {name: S.selName + ' (all)', ids: S.inst}], 0); fitIds([i], true); }
+
+/* ---------------- camera ---------------- */
+let diag = 50, fly = null;
+function fitIds(ids, animate){
+  if (!ids.length) return;
+  const b = new THREE.Box3(); for (const i of ids) b.union(parts[i].box);
+  fitBox(b, null, animate);
+}
+function fitBox(b, dir, animate){
+  const c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length() / 2, 0.4);
+  const d = dir || new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  const dist = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.05;
+  flyTo(c.clone().addScaledVector(d, dist), c, animate);
+}
+function flyTo(pos, tgt, animate){
+  if (!animate){ camera.position.copy(pos); controls.target.copy(tgt); controls.update(); return; }
+  fly = {p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: tgt, s: performance.now()};
+}
+function preset(k){
+  const b = new THREE.Box3(); for (const p of parts) if (visible(p.i)) b.union(p.box);
+  if (b.isEmpty()) for (const p of parts) b.union(p.box);
+  const dirs = {iso: new THREE.Vector3(1, 0.85, 1.15), plan: new THREE.Vector3(0, 1, 0.0001), front: new THREE.Vector3(0, 0.0001, 1), side: new THREE.Vector3(1, 0.0001, 0)};
+  fitBox(b, dirs[k].normalize(), true);
+}
+function onWheel(e){
+  if (e.target !== renderer.domElement) return;
+  e.preventDefault(); fly = null;
+  const r = renderer.domElement.getBoundingClientRect();
+  const v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(v, camera);
+  const hits = raycaster.intersectObjects(layerMeshes.filter(m => m && m.visible), false).filter(h => keptByCut(h.point));
+  const dirRay = raycaster.ray.direction.clone();
+  const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+  let D0 = hits.length ? hits[0].distance : camera.position.distanceTo(controls.target);
+  const minStep = Math.max(diag * 0.0015, 0.03);
+  const sgn = e.deltaY < 0 ? 1 : -1;
+  const notches = Math.min(4, Math.max(1, Math.round(Math.abs(e.deltaY) / 100)));
+  for (let n = 0; n < notches; n++){
+    const step = Math.max(D0 * 0.2, minStep) * sgn;
+    camera.position.addScaledVector(dirRay, step);
+    D0 = Math.max(D0 - step, minStep);
+  }
+  const hitP = hits.length ? hits[0].point : camera.position.clone().addScaledVector(dirRay, D0);
+  const depth = Math.max(fwd.dot(new THREE.Vector3().subVectors(hitP, camera.position)), minStep);
+  controls.target.copy(camera.position).addScaledVector(fwd, depth);
+  controls.update();
+}
+
+/* ---------------- grid + labels ---------------- */
+function mkLbl(cls, text){ const d = document.createElement('div'); d.className = 'lbl ' + cls; d.textContent = text; $('ov').appendChild(d); return d; }
+function buildGrid(){
+  gridGroup = new THREE.Group(); scene.add(gridGroup);
+  const z = C0[2], mat = new THREE.LineDashedMaterial({color: new THREE.Color(css('--grid') || '#a8562e'), dashSize: 0.6, gapSize: 0.25, transparent: true, opacity: 0.85});
+  const xs = D.gx, ys = D.gy;
+  const xmin = -17500, xmax = 53500, ymin = -15500, ymax = 14500;
+  const line = (a, b) => { const g = new THREE.BufferGeometry().setFromPoints([a, b]); const l = new THREE.Line(g, mat); l.computeLineDistances(); gridGroup.add(l); };
+  for (const [n, x] of xs){ line(W(x, ymin, z), W(x, ymax, z)); gridLabels.push({el: mkLbl('gbub', n), p: W(x, ymin - 900, z), pri: 0, kind: 'b'}); gridLabels.push({el: mkLbl('gbub', n), p: W(x, ymax + 900, z), pri: 0, kind: 'b'}); }
+  for (const [n, y] of ys){ line(W(xmin, y, z), W(xmax, y, z)); gridLabels.push({el: mkLbl('gbub', n), p: W(xmin - 900, y, z), pri: 0, kind: 'b'}); gridLabels.push({el: mkLbl('gbub', n), p: W(xmax + 900, y, z), pri: 0, kind: 'b'}); }
+  const sx = [...xs].sort((a, b) => a[1] - b[1]), sy = [...ys].sort((a, b) => a[1] - b[1]);
+  for (let k = 0; k + 1 < sx.length; k++){ const d = sx[k + 1][1] - sx[k][1]; gridLabels.push({el: mkLbl('glbl', fmt(d)), p: W((sx[k][1] + sx[k + 1][1]) / 2, ymin - 300, z), pri: 1, kind: 'd'}); }
+  for (let k = 0; k + 1 < sy.length; k++){ const d = sy[k + 1][1] - sy[k][1]; gridLabels.push({el: mkLbl('glbl', fmt(d)), p: W(xmin - 300, (sy[k][1] + sy[k + 1][1]) / 2, z), pri: 1, kind: 'd'}); }
+  // grid snap points
+  D.gridPts = [];
+  for (let a = 0; a < sx.length; a++) for (let b = 0; b < sy.length; b++){
+    D.gridPts.push(W(sx[a][1], sy[b][1], z));
+    if (a + 1 < sx.length) D.gridPts.push(W((sx[a][1] + sx[a + 1][1]) / 2, sy[b][1], z));
+    if (b + 1 < sy.length) D.gridPts.push(W(sx[a][1], (sy[b][1] + sy[b + 1][1]) / 2, z));
+  }
+  // tower tags
+  D.units.forEach((u, ui) => { const ids = parts.filter(p => p.unit === ui).map(p => p.i); const b = new THREE.Box3(); for (const i of ids) b.union(parts[i].box);
+    const c = b.getCenter(new THREE.Vector3()); c.y = b.max.y + 0.9; towerTags.push({el: mkLbl('ttag', u.replace('Truss ', '')), p: c, ui}); });
+}
+function occluded(p){
+  const dir = new THREE.Vector3().subVectors(p, camera.position); const L = dir.length(); dir.normalize();
+  raycaster.set(camera.position, dir); raycaster.far = L - 0.02;
+  const ms = layerMeshes.filter((m, li) => m && m.visible && (S.layerOp[li] ?? 1) >= 0.5);
+  const hits = raycaster.intersectObjects(ms, false);
+  raycaster.far = Infinity;
+  return hits.some(h => keptByCut(h.point));
+}
+function placeLabels(){
+  const r = renderer.domElement.getBoundingClientRect();
+  const key = camera.matrixWorld.elements.map(v => v.toFixed(4)).join(',') + clipPlanes.length + (clipPlanes[0] ? clipPlanes[0].constant.toFixed(3) : '');
+  const recompute = key !== occCache.key && (!occCache.t || performance.now() - occCache.t > 120);
+  if (recompute){ occCache.key = key; occCache.t = performance.now(); occCache.vis = {}; }
+  const placed = [];
+  const proj = (p) => { const v = p.clone().project(camera); return {x: (v.x + 1) / 2 * r.width, y: (1 - v.y) / 2 * r.height, ok: v.z < 1 && v.z > -1}; };
+  const all = [];
+  gridLabels.forEach((g, k) => all.push({o: g, id: 'g' + k, show: S.grid && S.labels}));
+  towerTags.forEach((t, k) => all.push({o: t, id: 't' + k, show: S.labels && !S.towerOff.has(t.ui), pri: -1}));
+  all.sort((a, b) => (a.o.pri ?? a.pri ?? 0) - (b.o.pri ?? b.pri ?? 0));
+  for (const a of all){
+    const el = a.o.el;
+    if (!a.show){ el.hidden = true; continue; }
+    const s = proj(a.o.p);
+    if (!s.ok || s.x < -40 || s.y < -40 || s.x > r.width + 40 || s.y > r.height + 40){ el.hidden = true; continue; }
+    if (recompute && a.o.kind !== undefined) occCache.vis[a.id] = !occluded(a.o.p);
+    if (a.o.kind !== undefined && occCache.vis[a.id] === false){ el.hidden = true; continue; }
+    el.hidden = false; el.style.left = s.x + 'px'; el.style.top = s.y + 'px';
+    const w = el.offsetWidth, h = el.offsetHeight, box = [s.x - w / 2, s.y - h / 2, s.x + w / 2, s.y + h / 2];
+    if (placed.some(q => box[0] < q[2] && q[0] < box[2] && box[1] < q[3] && q[1] < box[3])){ el.hidden = true; continue; }
+    placed.push(box);
+  }
+  for (const m of S.meas){ const s = proj(m.mid); m.el.hidden = !S.labels || !s.ok; m.el.style.left = s.x + 'px'; m.el.style.top = s.y + 'px'; m.obj.visible = S.labels; }
+  if (S.pendingObj) S.pendingObj.visible = S.labels;
+}
+
+/* ---------------- measure ---------------- */
+let snapMarker, guideLine, rubber;
+function markerTex(kind){
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.strokeStyle = css('--meas') || '#d026c8'; g.lineWidth = 5;
+  if (kind === 'corner') g.strokeRect(14, 14, 36, 36);
+  else if (kind === 'mid'){ g.beginPath(); g.moveTo(32, 8); g.lineTo(56, 32); g.lineTo(32, 56); g.lineTo(8, 32); g.closePath(); g.stroke(); }
+  else if (kind === 'centre'){ g.beginPath(); g.arc(32, 32, 24, 0, 7); g.stroke(); g.beginPath(); g.arc(32, 32, 10, 0, 7); g.stroke(); }
+  else if (kind === 'grid'){ g.beginPath(); g.arc(32, 32, 22, 0, 7); g.stroke(); }
+  else { g.setLineDash([8, 6]); g.beginPath(); g.arc(32, 32, 22, 0, 7); g.stroke(); }
+  return new THREE.CanvasTexture(c);
+}
+const MK = {};
+function setupMeasure(){
+  for (const k of ['corner', 'mid', 'centre', 'grid', 'surface']) MK[k] = new THREE.SpriteMaterial({map: markerTex(k), depthTest: false, transparent: true});
+  snapMarker = new THREE.Sprite(MK.corner); snapMarker.renderOrder = 10; snapMarker.visible = false; scene.add(snapMarker);
+  const lm = new THREE.LineBasicMaterial({color: new THREE.Color(css('--meas') || '#d026c8'), depthTest: false, transparent: true});
+  rubber = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), lm); rubber.visible = false; rubber.renderOrder = 9; scene.add(rubber);
+  guideLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({color: lm.color, dashSize: 0.05, gapSize: 0.05, transparent: true, opacity: 0.45, depthTest: false}));
+  guideLine.visible = false; scene.add(guideLine);
+}
+function setMeasure(on){ S.measure = on; $('bMeas').classList.toggle('on', on); $('bMeas2').classList.toggle('on', on); if (!on){ clearPending(); snapMarker.visible = false; $('readout').hidden = true; } renderer.domElement.style.cursor = on ? 'crosshair' : ''; }
+function clearPending(){ S.pending = null; rubber.visible = false; guideLine.visible = false; if (S.pendingObj){ scene.remove(S.pendingObj); S.pendingObj = null; } }
+function los(pt){
+  const dir = new THREE.Vector3().subVectors(pt, camera.position); const L = dir.length(); dir.normalize();
+  raycaster.set(camera.position, dir); raycaster.far = L - 0.0015;
+  const hits = raycaster.intersectObjects(layerMeshes.filter(m => m && m.visible && (S.layerOp[m.userData.li] ?? 1) >= 0.5), false); raycaster.far = Infinity;
+  return !hits.some(h => keptByCut(h.point));
+}
+function snapAt(cx, cy){
+  const r = renderer.domElement.getBoundingClientRect(), mx = cx - r.left, my = cy - r.top;
+  const v = new THREE.Vector2((mx / r.width) * 2 - 1, -(my / r.height) * 2 + 1); raycaster.setFromCamera(v, camera);
+  const ray = raycaster.ray.clone();
+  const hit = pickAt(cx, cy);
+  if (!$('cMag').checked){ return hit ? {p: hit.point, kind: 'surface', part: hit.i} : null; }
+  const cand = [];
+  const proj = (p) => { const q = p.clone().project(camera); return [(q.x + 1) / 2 * r.width, (1 - q.y) / 2 * r.height, q.z]; };
+  const tolPx = 26;
+  const worldPerPx = (d) => 2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / r.height;
+  for (const p of parts){
+    if (!visible(p.i) || (S.layerOp[p.layer] ?? 1) < 0.02) continue;
+    const dc = p.sphere.center.distanceTo(camera.position);
+    if (ray.distanceToPoint(p.sphere.center) > p.sphere.radius + tolPx * worldPerPx(dc)) continue;
+    for (const [arr, kind, bias] of [[p.corners, 'corner', 0], [p.mids, 'mid', 2], [p.cents, 'centre', 3]]) for (const q of arr){
+      const s = proj(q); if (s[2] > 1 || s[2] < -1) continue; const d = Math.hypot(s[0] - mx, s[1] - my); if (d <= tolPx) cand.push({p: q, kind, part: p.i, d: d + bias});
+    }
+  }
+  if (S.grid) for (const q of D.gridPts){ const s = proj(q); if (s[2] > 1 || s[2] < -1) continue; const d = Math.hypot(s[0] - mx, s[1] - my); if (d <= tolPx) cand.push({p: q, kind: 'grid', part: -1, d: d + 1}); }
+  cand.sort((a, b) => a.d - b.d);
+  for (const c of cand.slice(0, 40)){ if (c.kind !== 'grid' && !keptByCut(c.p)) continue; if (c.kind === 'grid' || los(c.p)) return c; }
+  return hit ? {p: hit.point, kind: 'surface', part: hit.i} : null;
+}
+function lockB(A, B, shift){
+  if (!$('cLock').checked || shift) return {p: B.p, locked: false};
+  const pa = A.part >= 0 ? parts[A.part] : null, pb = B.part >= 0 ? parts[B.part] : null;
+  const d = new THREE.Vector3().subVectors(B.p, A.p);
+  if (pa && pb && pa === pb && pa.sloped) return {p: B.p, locked: false};
+  const dn = d.clone().normalize();
+  for (const q of [pa, pb]) if (q && q.sloped && Math.abs(dn.dot(q.axw)) > Math.cos(THREE.MathUtils.degToRad(8))) return {p: B.p, locked: false};
+  const a = [Math.abs(d.x), Math.abs(d.y), Math.abs(d.z)]; const k = a.indexOf(Math.max(...a));
+  const P = A.p.clone(); if (k === 0) P.x = B.p.x; if (k === 1) P.y = B.p.y; if (k === 2) P.z = B.p.z;
+  return {p: P, locked: true, axis: ['dX', 'dZ', 'dY'][k]};
+}
+function measLabel(A, Bp, lk){ const L = A.p.distanceTo(Bp) * 1000; const v = Math.abs(L - Math.round(L)) < 0.05 ? fmt(Math.round(L)) : fmt(L, 1); return (lk.locked ? lk.axis + ' ' : '') + v + ' mm'; }
+function addMeasurement(A, B, shift){
+  const lk = lockB(A, B, shift); const Bp = lk.p;
+  const g = new THREE.Group();
+  const lm = new THREE.LineBasicMaterial({color: new THREE.Color(css('--meas') || '#d026c8'), depthTest: false, transparent: true});
+  const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([A.p, Bp]), lm); ln.renderOrder = 9; g.add(ln);
+  for (const q of [A.p, Bp]){ const s = new THREE.Sprite(MK.corner); s.position.copy(q); s.renderOrder = 10; g.add(s); s.userData.end = true; }
+  scene.add(g);
+  const el = mkLbl('mlbl', measLabel(A, Bp, lk));
+  const m = {obj: g, el, mid: new THREE.Vector3().addVectors(A.p, Bp).multiplyScalar(0.5)}; S.meas.push(m);
+  m.obj.visible = S.labels; el.hidden = !S.labels;
+}
+function undoMeasure(){
+  if (S.pending){ clearPending(); toast('Point A cleared'); return; }
+  const m = S.meas.pop(); if (!m) return toast('No measurement to undo');
+  scene.remove(m.obj); m.el.remove(); toast('Measurement #' + (S.meas.length + 1) + ' undone');
+}
+function clearMeasures(){ for (const m of S.meas){ scene.remove(m.obj); m.el.remove(); } S.meas = []; clearPending(); }
+function readout(sn){
+  const ro = $('readout'); if (!sn){ ro.hidden = true; return; }
+  const x = sn.p.x * 1000 + C0[0], y = -sn.p.z * 1000 + C0[1], z = sn.p.y * 1000 + C0[2];
+  const names = {corner: 'Corner', mid: 'Midpoint', centre: 'Centre', grid: 'Grid', surface: 'Surface'};
+  ro.hidden = false; ro.textContent = `${names[sn.kind]} · X ${fmt(x)} · Y ${fmt(y)} · Z ${fmt(z)}`;
+}
+
+/* ---------------- section ---------------- */
+function applyCut(){
+  if (!S.cut){ clipPlanes.length = 0; } else {
+    const b = new THREE.Box3(); for (const p of parts) b.union(p.box);
+    const t = S.cut.pos / 1000; let pl;
+    const lerp = (a, c) => a + (c - a) * t;
+    if (S.cut.dir === 'top') pl = new THREE.Plane(new THREE.Vector3(0, -1, 0), lerp(b.min.y, b.max.y));
+    if (S.cut.dir === 'left') pl = new THREE.Plane(new THREE.Vector3(1, 0, 0), -lerp(b.min.x, b.max.x));
+    if (S.cut.dir === 'right') pl = new THREE.Plane(new THREE.Vector3(-1, 0, 0), lerp(b.min.x, b.max.x));
+    if (S.cut.dir === 'front') pl = new THREE.Plane(new THREE.Vector3(0, 0, -1), lerp(b.min.z, b.max.z));
+    if (S.cut.dir === 'back') pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -lerp(b.min.z, b.max.z));
+    clipPlanes.length = 0; clipPlanes.push(pl);
+  }
+  scene.traverse(o => { if (o.material && 'clippingPlanes' in o.material){ o.material.needsUpdate = true; } });
+  occCache.key = '';
+}
+
+/* ---------------- MTO export (same format as Yang's MTO builder) ---------------- */
+function mtoSpec(ids){
+  const pick = ids && ids.length ? new Set(ids) : null;
+  const units = [];
+  D.unitKeys.forEach((u, ui) => {
+    const rows = {}; for (const c of D.cats) rows[c.code] = [];
+    const agg = new Map();
+    for (const p of parts){
+      if (p.unit !== ui || (pick && !pick.has(p.i))) continue;
+      const cat = D.cats.find(c => c.layers.includes(p.layer)).code;
+      let k, rec;
+      if (p.plate){ k = [cat, p.t, p.prof, p.plate.L, p.plate.W, p.plate.t, p.plate.tri, p.desc].join('|'); rec = {cat, t: p.t, prof: p.prof, plate: p.plate, desc: p.desc, L: p.plate.L}; }
+      else { const L = Math.round(p.L); k = [cat, p.t, p.prof, L].join('|'); rec = {cat, t: p.t, prof: p.prof, L}; }
+      if (p.rail === 'top') rec.run = true;
+      if (p.mto){ rec.mto = p.mto; k += '|' + JSON.stringify(p.mto); }
+      k += '|' + (rec.run ? 'run' : '');
+      if (!agg.has(k)) agg.set(k, Object.assign(rec, {n: 0, src: (p.ref && p.ref !== p.t ? `Ref ${p.ref}; ` : '') + p.src, grade: (p.grade || D.meta.grade || '*S275').split(' (')[0], mdesc: p.mto_desc, msrc: p.mto_src})); agg.get(k).n++;
+    }
+    [...agg.values()].sort((a, b) => a.cat < b.cat ? -1 : a.cat > b.cat ? 1 : (!!a.plate) - (!!b.plate) || (a.t < b.t ? -1 : a.t > b.t ? 1 : a.L - b.L)).forEach(a => {
+      const pf = D.profs[a.prof] || {};
+      if (a.mto){ const m = a.mto;
+        rows[a.cat].push({kind: m.kind, uom: m.uom, cat: m.cat ?? pf.cat, grade: a.grade, desc: m.desc ?? a.mdesc ?? a.prof, mark: a.t, kgm: m.kgm,
+          len: m.len ?? (a.plate ? a.plate.L : a.L), wid: m.wid ?? (a.plate ? a.plate.W : undefined), qty: a.n, set: 1, run: a.run, src: m.src ?? a.src, assumed: m.assumed}); }
+      else if (a.plate) rows[a.cat].push({kind: 'plate', cat: 'Plate', grade: a.grade, desc: `PL${a.plate.t} ${a.desc}` + (a.plate.tri ? ' - triangles nested 2 per rectangle' : ''), mark: a.t,
+        len: a.plate.L, wid: a.plate.W, thk: a.plate.t, qty: a.plate.tri ? a.n / 2 : a.n, set: 1, src: `${a.src}; plate 7.85`});
+      else rows[a.cat].push({kind: 'length', d: pf.d, w: pf.w, t: pf.t, cat: pf.cat, grade: a.grade, desc: a.mdesc || a.prof, mark: a.t, kgm: pf.kgm, m2m: pf.m2m, len: a.L, qty: a.n, set: 1,
+        run: a.run, assumed: pf.m2m_assumed ? ['m2m'] : undefined,
+        src: a.msrc ? `${a.msrc}; ${pf.src}` : `${a.src}; cut length from 3D model (clipped to bearing faces); ${pf.src}`});
+    });
+    if (pick && !Object.values(rows).some(r => r.length)) return;
+    units.push({name: (D.meta.unit_names || {})[u] || u, rows});
+  });
+  return {header: D.header, currency: D.meta.currency, unit_label: 'unit', grand_total_label: D.meta.grand_total_label, allowance: 0,
+    categories: D.cats.map(c => ({code: c.code, title: c.title, dwg: c.dwg})), units, assumptions: D.assumptions};
+}
+function colL(n){ let s = ''; while (n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+function buildWorkbook(spec){
+  /* port of generate-mto build_mto.py, function by function: same cells, formulas and styles */
+  const wb = new ExcelJS.Workbook(); wb.calcProperties = {fullCalcOnLoad: true};
+  const FONT = 'Times New Roman', BLUE = 'FF0000FF', GREEN = 'FF008000';
+  const thin = {style: 'thin'}, dbl = {style: 'double'};
+  const HDR_B = {left: thin, right: thin, top: thin, bottom: dbl}, SUB_B = {top: thin, bottom: thin}, TOT_B = {top: thin, bottom: dbl};
+  const fill = argb => ({type: 'pattern', pattern: 'solid', fgColor: {argb}});
+  const RED_FILL = fill('FFFFC7CE'), PURPLE_FILL = fill('FFE4D7F5'), HDR_FILL = fill('FFEDEDED');
+  const f = (sz = 11, b = false, color = null, u = null) => { const o = {name: FONT, size: sz, bold: b}; if (color) o.color = {argb: color}; if (u) o.underline = u; return o; };
+  const fx = s => ({formula: s.replace(/^=/, '')});
+  const q = s => `'${s.replace(/'/g, "''")}'`;
+  const setPage = (ws, titles) => { ws.pageSetup = Object.assign(ws.pageSetup || {}, {orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0}); if (titles) ws.pageSetup.printTitlesRow = titles; };
+  const titleBlock = (ws, h, vcol) => [["CLIENT'S : ", 'client'], ['PROJECT : ', 'project'], ['DESCRIPTION : ', 'description'], ['CONTRACTOR : ', 'contractor'], ['DATE : ', 'date']].forEach(([lab, key], i) => {
+    const a = ws.getCell(i + 1, 1); a.value = lab; a.font = f(11, true); const c = ws.getCell(i + 1, vcol); c.value = h[key] || ''; c.font = f(); });
+  const UOMS = ['m2', 'm', 'pcs'];
+  const kind = r => r.kind || (r.wid && r.thk && !r.kgm ? 'plate' : (r.len ? 'length' : 'piece'));
+  const UNIT_COLS = ['Item', 'Material Section', null, null, null, null, 'Category', 'Grade', 'Description', 'Mark', 'Unit wt. (kg/m, kg/m2) / kg/no', 'Surface area (m2/m)',
+    'Length (mm)', 'Width (mm)', 'Thk (mm)', 'Qty (no)', 'Set (no)', 'Weight (kg)', 'Painted area (m2)', 'Run (m)', 'Area (m2)', 'kg/m run', 'Dim source / basis'];
+  const UNIT_W = [6, 7, 3, 7, 3, 7, 9, 9, 58, 8, 13, 12, 11, 10, 8, 8, 7, 13, 13, 11, 11, 10, 70];
+  const NC = UNIT_COLS.length, SRC = NC;
+  const FIELD_COL = {cat: 7, grade: 8, desc: 9, mark: 10, kgm: 11, m2m: 12, len: 13, wid: 14, thk: 15, qty: 16, set: 17};
+  const INPUT_COLS = [11, 12, 13, 14, 15, 16, 17];
+  const NUMFMT = {11: '0.0##', 12: '0.00#', 13: '#,##0', 14: '#,##0', 15: '0.#', 16: '#,##0', 17: '#,##0', 18: '#,##0.0', 19: '#,##0.0', 20: '#,##0.00', 21: '#,##0.00', 22: '0.0'};
+  const CENTER = [1, 7, 8, 10, 16, 17, 19, 20, 21, 22];
+
+  const codes = spec.categories.map(c => c.code);
+  if (new Set(codes).size !== codes.length) throw new Error('duplicate category codes');
+  for (const u of spec.units){ const bad = Object.keys(u.rows || {}).filter(k => !codes.includes(k)); if (bad.length) throw new Error(`${u.name}: rows under unknown categories ${bad}`); }
+
+  const summ = wb.addWorksheet('Summary ');
+  const links = {};
+  for (const unit of spec.units){
+    const ws = wb.addWorksheet(unit.name);
+    titleBlock(ws, spec.header, 5);
+    const note = unit.note ? `   (${unit.note})` : '';
+    const h6 = ws.getCell(6, 1); h6.value = `QTY-BREAKDOWN : ${unit.name}${note}`; h6.font = f(12, true);
+    const key = ws.getCell(6, SRC); key.value = 'Red fill = ASSUMED   Purple fill = SCALED   Blue font = input'; key.font = f(9, true); key.alignment = {horizontal: 'right'};
+    UNIT_COLS.forEach((t, i) => { const cell = ws.getCell(7, i + 1); if (t !== null) cell.value = t; cell.font = f(11, true); cell.border = HDR_B; cell.fill = HDR_FILL;
+      cell.alignment = {horizontal: 'center', vertical: 'middle', wrapText: true}; });
+    ws.mergeCells('B7:F7'); ws.getRow(7).height = 32;
+    setPage(ws, '7:7');
+    UNIT_W.forEach((w, i) => ws.getColumn(i + 1).width = w === 9 ? 9.0001 : w);  // ExcelJS omits width 9 (its default)
+    ws.views = [{state: 'frozen', xSplit: 0, ySplit: 7, topLeftCell: 'A8'}];
+
+    let r = 8; const subs = {};
+    for (const cat of spec.categories){
+      const code = cat.code;
+      const a = ws.getCell(r, 1); a.value = code; a.font = f(13, true); a.alignment = {horizontal: 'center'};
+      const t = ws.getCell(r, 9); t.value = cat.title; t.font = f(13, true, null, 'single');
+      const dwg = (unit.dwg || {})[code] || cat.dwg || '';
+      const dl = ws.getCell(r + 1, 9); dl.value = dwg ? `Dwg No: ${dwg}` : 'Dwg No: -'; dl.font = f(11, true);
+      r += 2; const first = r;
+      ((unit.rows || {})[code] || []).forEach((row, i) => {
+        const k = kind(row);
+        if (k === 'measure' && !UOMS.includes(row.uom)) throw new Error(`${unit.name} ${code}: measure row needs uom in ${UOMS}`);
+        const vals = {1: i + 1, 7: row.cat, 8: row.grade, 9: row.desc, 10: row.mark, 11: row.kgm, 12: row.m2m, 13: row.len, 14: row.wid, 15: row.thk, 16: row.qty ?? 1, 17: row.set ?? 1, [SRC]: row.src};
+        if (k === 'length' && row.d !== undefined && row.d !== null){ vals[2] = String(row.d); vals[3] = 'x'; vals[4] = String(row.w ?? '');
+          if (row.t !== undefined && row.t !== null && row.t !== ''){ vals[5] = 'x'; vals[6] = String(row.t); } }
+        for (const cs in vals){ const c = +cs, v = vals[cs]; if (v === undefined || v === null) continue;
+          const cell = ws.getCell(r, c); cell.value = v; cell.font = f(c === SRC ? 9 : 11, false, INPUT_COLS.includes(c) ? BLUE : null);
+          if (NUMFMT[c]) cell.numFmt = NUMFMT[c];
+          if (CENTER.includes(c)) cell.alignment = {horizontal: 'center', vertical: 'top'};
+          else if (c === SRC) cell.alignment = {wrapText: false, vertical: 'top'}; }
+        for (const [fk, fl] of [['scaled', PURPLE_FILL], ['assumed', RED_FILL]]) for (const fld of row[fk] || []) ws.getCell(r, FIELD_COL[fld]).fill = fl;
+        let fm;
+        if (k === 'length') fm = `=K${r}*M${r}/1000*P${r}*Q${r}`;
+        else if (k === 'plate') fm = `=M${r}/1000*N${r}/1000*O${r}*${row.dens ?? 7.85}*P${r}*Q${r}`;
+        else if (k === 'area') fm = `=K${r}*M${r}/1000*N${r}/1000*P${r}*Q${r}`;
+        else if (k === 'measure') fm = null;
+        else fm = `=K${r}*P${r}*Q${r}`;
+        if (fm){ const p = ws.getCell(r, 18); p.value = fx(fm); p.font = f(); p.numFmt = NUMFMT[18]; p.alignment = {vertical: 'top'}; }
+        let pa = null;
+        if (k === 'length' && row.m2m !== undefined && row.m2m !== null) pa = `=L${r}*M${r}/1000*P${r}*Q${r}`;
+        else if (k === 'plate') pa = `=2*M${r}/1000*N${r}/1000*P${r}*Q${r}`;
+        if (pa){ const c = ws.getCell(r, 19); c.value = fx(pa); c.font = f(); c.numFmt = NUMFMT[19]; c.alignment = {horizontal: 'center', vertical: 'top'}; }
+        const run = row.run || (k === 'measure' && row.uom === 'm') ? `=M${r}/1000*P${r}*Q${r}` : null;
+        const area = k === 'area' || (k === 'measure' && row.uom === 'm2') ? `=M${r}/1000*N${r}/1000*P${r}*Q${r}` : null;
+        for (const [c, v] of [[20, run], [21, area]]) if (v){ const cell = ws.getCell(r, c); cell.value = fx(v); cell.font = f(); cell.numFmt = NUMFMT[c]; cell.alignment = {horizontal: 'center', vertical: 'top'}; }
+        for (let c = 1; c <= NC; c++){ const cell = ws.getCell(r, c); const al = cell.alignment || {};
+          cell.alignment = {horizontal: al.horizontal, vertical: 'top', wrapText: al.wrapText}; }
+        r++;
+      });
+      const last = r - 1;
+      ws.getCell(r, 9).value = `Sub-Total ${code}`;
+      ['R', 'S', 'T', 'U'].forEach((L, j) => ws.getCell(r, 18 + j).value = last >= first ? fx(`=SUM(${L}${first}:${L}${last})`) : 0);
+      ws.getCell(r, 22).value = fx(`=IF(AND(T${r}>0,R${r}>0),R${r}/T${r},"")`);
+      for (let c = 1; c <= NC; c++){ const cell = ws.getCell(r, c); cell.border = SUB_B; cell.font = f(11, true); }
+      ws.getCell(r, 18).numFmt = ws.getCell(r, 19).numFmt = '#,##0';
+      ws.getCell(r, 20).numFmt = ws.getCell(r, 21).numFmt = '#,##0.0';
+      ws.getCell(r, 22).numFmt = NUMFMT[22];
+      subs[code] = r; r += 2;
+    }
+    const total = r;
+    ws.getCell(r, 9).value = `TOTAL ${unit.name} (kg)`;
+    ['R', 'S', 'T', 'U'].forEach((L, j) => ws.getCell(r, 18 + j).value = fx('=' + Object.values(subs).map(x => `${L}${x}`).join('+')));
+    for (let c = 1; c <= NC; c++){ const cell = ws.getCell(r, c); cell.border = TOT_B; cell.font = f(12, true); }
+    ws.getCell(r, 18).numFmt = ws.getCell(r, 19).numFmt = '#,##0';
+    ws.getCell(r, 20).numFmt = ws.getCell(r, 21).numFmt = '#,##0.0';
+    ws.pageSetup.printArea = `A1:V${total}`;
+    links[unit.name] = [subs, total];
+  }
+
+  // summary
+  const ws = summ;
+  const cur = spec.currency || 'RM', units = spec.units.map(u => u.name), n = units.length;
+  const tcol = 3 + n, ucol = 4 + n, rcol = 5 + n, acol = 6 + n, T = colL(tcol), R = colL(rcol), A = colL(acol), last = colL(acol);
+  titleBlock(ws, spec.header, 3);
+  ['Sl. No.', 'Description', ...units, 'Total (kg)', 'Unit', `Rate (${cur})`, `Amount (${cur})`, 'Painted area (m2)', 'Run (m)', 'Area (m2)', 'kg/m run'].forEach((t, i) => {
+    const cell = ws.getCell(7, i + 1); cell.value = t; cell.font = f(11, true); cell.border = HDR_B; cell.fill = HDR_FILL;
+    cell.alignment = {horizontal: 'center', vertical: 'middle', wrapText: true}; });
+  ws.getRow(7).height = 32;
+  setPage(ws, null);
+  [7, 80, ...Array(n).fill(13), 14, 7, 11, 13, 16, 11, 11, 10].forEach((w, i) => ws.getColumn(i + 1).width = w === 9 ? 9.0001 : w);  // ExcelJS omits width 9 (its default)
+  const rates = spec.rates || {};
+  let r = 8;
+  for (const cat of spec.categories){
+    const code = cat.code;
+    const a = ws.getCell(r, 1); a.value = code; a.font = f(13, true); a.alignment = {horizontal: 'center'};
+    const b = ws.getCell(r, 2); b.value = cat.title; b.font = f(11, true); b.alignment = {wrapText: true, vertical: 'middle'};
+    units.forEach((u, j) => { const c = ws.getCell(r, 3 + j); c.value = fx(`=${q(u)}!R${links[u][0][code]}`); c.font = f(11, false, GREEN); c.numFmt = '#,##0'; });
+    const c = ws.getCell(r, tcol); c.value = fx(`=SUM(C${r}:${colL(2 + n)}${r})`); c.font = f(11, true); c.numFmt = '#,##0';
+    ws.getCell(r, ucol).value = 'kg'; ws.getCell(r, ucol).font = f();
+    const pc = ws.getCell(r, acol + 1); pc.value = fx('=' + units.map(u => `${q(u)}!S${links[u][0][code]}`).join('+')); pc.font = f(11, false, GREEN); pc.numFmt = '#,##0.0';
+    for (const [k, col] of [[2, 'T'], [3, 'U']]){ const cc = ws.getCell(r, acol + k); cc.value = fx('=' + units.map(u => `${q(u)}!${col}${links[u][0][code]}`).join('+')); cc.font = f(11, false, GREEN); cc.numFmt = '#,##0.0'; }
+    const rn = colL(acol + 2);
+    const km = ws.getCell(r, acol + 4); km.value = fx(`=IF(AND(${rn}${r}>0,${T}${r}>0),${T}${r}/${rn}${r},"")`); km.font = f(11, true); km.numFmt = '0.0';
+    if (code in rates){ const rc = ws.getCell(r, rcol); rc.value = rates[code]; rc.font = f(11, false, BLUE);
+      const am = ws.getCell(r, acol); am.value = fx(`=${T}${r}*${R}${r}`); am.font = f(); am.numFmt = '#,##0.00'; }
+    r++;
+  }
+  const first = 8, lastcat = r - 1;
+  ws.getCell(r, 2).value = spec.unit_label === undefined ? 'Sub-Total per unit (kg)' : `Sub-Total per ${spec.unit_label} (kg)`;
+  for (let c = 3; c <= tcol; c++){ const cl = colL(c); const cell = ws.getCell(r, c); cell.value = fx(`=SUM(${cl}${first}:${cl}${lastcat})`); cell.numFmt = '#,##0'; }
+  if (Object.keys(rates).length){ const cell = ws.getCell(r, acol); cell.value = fx(`=SUM(${A}${first}:${A}${lastcat})`); cell.numFmt = '#,##0.00'; }
+  for (let c = 1; c <= acol + 4; c++){ const cell = ws.getCell(r, c); cell.border = SUB_B; cell.font = f(11, true); }
+  const sub = r;
+  for (const k of [1, 2, 3]){ const cl = colL(acol + k); const ps = ws.getCell(r, acol + k); ps.value = fx(`=SUM(${cl}${first}:${cl}${lastcat})`); ps.font = f(11, true); ps.numFmt = '#,##0.0'; }
+  r++;
+  const word = spec.unit_label || 'unit';
+  const ck = ws.getCell(r, 2); ck.value = `Check: ${word} sheet total (kg)`; ck.font = f(10);
+  units.forEach((u, j) => { const c = ws.getCell(r, 3 + j); c.value = fx(`=${q(u)}!R${links[u][1]}`); c.font = f(10, false, GREEN); c.numFmt = '#,##0'; });
+  r++; const pct = r;
+  const al = ws.getCell(r, 2); al.value = 'Connection / misc. allowance (%) - 0 when plates and bolts are itemised'; al.font = f();
+  const pcc = ws.getCell(r, tcol); pcc.value = spec.allowance || 0; pcc.font = f(11, false, BLUE); pcc.numFmt = '0.0%';
+  r++;
+  const al2 = ws.getCell(r, 2); al2.value = 'Allowance (kg)'; al2.font = f();
+  for (let c = 3; c <= tcol; c++){ const cl = colL(c); const cell = ws.getCell(r, c); cell.value = fx(`=${cl}${sub}*$${T}$${pct}`); cell.font = f(); cell.numFmt = '#,##0'; }
+  const allow = r; r += 2;
+  const label = spec.grand_total_label || `${n} UNITS`;
+  ws.getCell(r, 2).value = `GRAND TOTAL - ${label} (kg)`;
+  const g1 = ws.getCell(r, tcol); g1.value = fx(`=${T}${sub}+${T}${allow}`); g1.numFmt = '#,##0';
+  ws.getCell(r + 1, 2).value = `GRAND TOTAL - ${label} (tonnes)`;
+  const g2 = ws.getCell(r + 1, tcol); g2.value = fx(`=${T}${r}/1000`); g2.numFmt = '#,##0.00';
+  for (const rr of [r, r + 1]) for (let c = 1; c <= acol + 4; c++){ const cell = ws.getCell(rr, c); cell.border = TOT_B; cell.font = f(12, true); }
+  r += 4;
+  const ah = ws.getCell(r, 1); ah.value = 'ASSUMPTIONS / ITEMS TO VERIFY'; ah.font = f(12, true);
+  for (const a of spec.assumptions || []){
+    r++;
+    const d = ws.getCell(r, 1); d.value = '-'; d.font = f(10); d.alignment = {horizontal: 'right', vertical: 'top'};
+    const c = ws.getCell(r, 2); c.value = a; c.font = f(10); c.alignment = {wrapText: true, vertical: 'top'};
+    ws.mergeCells(`B${r}:${last}${r}`);
+    ws.getRow(r).height = 15 * Math.max(2, Math.ceil(a.length / 170));
+  }
+  return wb;
+}
+async function doExport(){
+  if (typeof ExcelJS === 'undefined') return toast('Spreadsheet library did not load - check the connection and reload');
+  const dl = window.claude ? await window.claude.use('downloads') : null;
+  if (!dl) return toast('Saving files is not available in this view');
+  const ids = S.sel.length ? S.sel : null;
+  const spec = mtoSpec(ids);
+  const wb = buildWorkbook(spec); const buf = await wb.xlsx.writeBuffer();
+  const tag = ids ? '_' + ((S.selChain[S.selLevel] && S.selChain[S.selLevel].g !== undefined) ? D.groups[S.selChain[S.selLevel].g].name : (S.selName || 'selection')).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) : '';
+  try { await dl.save({filename: `${D.meta.export_prefix}${tag}_MTO.xlsx`, data: new Blob([buf])}); toast('Saved MTO workbook'); }
+  catch (e){ toast(e && e.code === 'declined' ? 'Save cancelled' : 'Could not save: ' + (e && e.code || 'unknown')); }
+}
+
+function fillCard(){
+  const c = D.meta.card;
+  $('cTitle').textContent = c.title; $('cDesc').textContent = c.desc; $('cRef').textContent = c.ref;
+  const steel = parts.filter(p => !(p.mto && p.mto.kind === 'measure'));   // bondek package: counted in m2 / m / pcs, not steel kg
+  const kg = steel.reduce((a, p) => a + p.kg, 0);
+  $('cCount').innerHTML = `${fmt(steel.length)} steel parts · <b>${fmt(kg, 1)} kg</b>`;
+}
+
+/* ---------------- main ---------------- */
+async function main(){
+  try { D = await loadData(); } catch (e){ $('load').textContent = e.message; return; }
+  prepParts();
+  const view = $('view');
+  renderer = new THREE.WebGLRenderer({antialias: true, alpha: true}); renderer.setClearColor(0xffffff, 0); renderer.localClippingEnabled = true; renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  view.insertBefore(renderer.domElement, $('ov')); $('load').remove();
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(40, 1, 0.05, 2000); camera.up.set(0, 1, 0);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x5a6270, 0.75)); const dl = new THREE.DirectionalLight(0xffffff, 0.75); dl.position.set(40, 80, 30); scene.add(dl);
+  const dl2 = new THREE.DirectionalLight(0xffffff, 0.3); dl2.position.set(-50, 20, -40); scene.add(dl2);
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableZoom = false; controls.screenSpacePanning = true; controls.enableDamping = true; controls.dampingFactor = 0.12;
+  controls.mouseButtons = {LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN};
+  const all = new THREE.Box3(); for (const p of parts) all.union(p.box); diag = all.getSize(new THREE.Vector3()).length();
+  buildGhosts(); buildLayers(); buildPanel(); fillCard(); buildGrid(); setupMeasure();
+  const resize = () => { const r = view.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix(); occCache.key = ''; };
+  new ResizeObserver(resize).observe(view); resize();
+  camera.position.set(0, 20, 60); controls.target.set(0, 5, 0); preset('iso'); if (fly){ camera.position.copy(fly.p1); controls.target.copy(fly.t1); fly = null; } controls.update();
+  view.addEventListener('wheel', onWheel, {passive: false, capture: true});
+  // pointer: click select / measure
+  let down = null;
+  renderer.domElement.addEventListener('pointerdown', e => { down = {x: e.clientX, y: e.clientY, b: e.button}; });
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (!S.measure) return;
+    const sn = snapAt(e.clientX, e.clientY);
+    if (sn){ snapMarker.visible = true; snapMarker.material = MK[sn.kind]; snapMarker.position.copy(sn.p); const d = camera.position.distanceTo(sn.p); snapMarker.scale.setScalar(d * 0.03); } else snapMarker.visible = false;
+    readout(sn);
+    if (S.pending && sn){
+      const lk = lockB(S.pending, sn, e.shiftKey);
+      rubber.geometry.setFromPoints([S.pending.p, lk.p]); rubber.visible = true;
+      if (lk.locked){ guideLine.geometry.setFromPoints([lk.p, sn.p]); guideLine.computeLineDistances(); guideLine.visible = true; } else guideLine.visible = false;
+    }
+  });
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 || down.b !== 0){ down = null; return; } down = null;
+    if (S.measure){
+      const sn = snapAt(e.clientX, e.clientY); if (!sn) return;
+      if (!S.pending){ S.pending = sn; const s = new THREE.Sprite(MK.corner); s.position.copy(sn.p); s.scale.setScalar(camera.position.distanceTo(sn.p) * 0.03); s.renderOrder = 10; scene.add(s); S.pendingObj = s; s.visible = S.labels; }
+      else { addMeasurement(S.pending, sn, e.shiftKey); clearPending(); }
+      return;
+    }
+    const h = pickAt(e.clientX, e.clientY);
+    S.inst = null;
+    if (!h){ select([], [], 0); return; }
+    if (S.selChain.length && S.selChain[0].ids.length === 1 && S.selChain[0].ids[0] === h.i){
+      const k = (S.selLevel + 1) % S.selChain.length; S.selLevel = k; S.sel = S.selChain[k].ids; updateSelMesh(); renderInfo();
+    } else { const ch = chainFor(h.i); select(ch[0].ids, ch, 0); }
+  });
+  // buttons
+  $('vIso').onclick = () => preset('iso'); $('vPlan').onclick = () => preset('plan'); $('vFront').onclick = () => preset('front'); $('vSide').onclick = () => preset('side');
+  $('bGrid').onclick = () => { S.grid = !S.grid; $('bGrid').classList.toggle('on', S.grid); gridGroup.visible = S.grid; };
+  $('bMeas').onclick = $('bMeas2').onclick = () => setMeasure(!S.measure);
+  $('bClrMeas').onclick = clearMeasures;
+  $('bOnly').onclick = showOnly; $('bShowAll').onclick = showAll; $('bHide').onclick = hideSel; $('bUndo').onclick = undo;
+  $('bSelAll').onclick = () => { const ids = parts.filter(p => visible(p.i)).map(p => p.i); S.selName = 'All modelled steel'; select(ids, [{name: 'All', ids}], 0); };
+  $('bExport').onclick = doExport;
+  $('bPrev').onclick = () => stepInst(-1); $('bNext').onclick = () => stepInst(1);
+  $('bAllInst').onclick = () => { if (!S.inst) return; select(S.inst, [{name: S.selName, ids: S.inst}], 0); fitIds(S.inst, true); };
+  $('q').oninput = doSearch;
+  $('cLabels').onchange = e => { S.labels = e.target.checked; };
+  $('cutOn').onclick = () => { S.cut = {dir: $('cutDir').value, pos: +$('cutPos').value}; applyCut(); };
+  $('cutOff').onclick = () => { S.cut = null; applyCut(); };
+  $('cutDir').onchange = () => { if (S.cut){ S.cut.dir = $('cutDir').value; applyCut(); } };
+  $('cutPos').oninput = () => { if (!S.cut) S.cut = {dir: $('cutDir').value, pos: 500}; S.cut.pos = +$('cutPos').value; applyCut(); };
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); if (S.measure) undoMeasure(); else undo(); return; }
+    if (e.key === 'h' || e.key === 'H') hideSel();
+    else if (e.key === 'm' || e.key === 'M') setMeasure(!S.measure);
+    else if (e.key === 'Escape'){ if (S.measure){ if (S.pending) clearPending(); else setMeasure(false); } else select([], [], 0); }
+  });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (selMesh) selMesh.material.color.set(css('--sel')); });
+  document.fonts && document.fonts.ready.then(() => { occCache.key = ''; });
+  // loop
+  const loop = () => {
+    requestAnimationFrame(loop);
+    if (fly){ const t = Math.min(1, (performance.now() - fly.s) / 450), e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      camera.position.lerpVectors(fly.p0, fly.p1, e); controls.target.lerpVectors(fly.t0, fly.t1, e); if (t >= 1) fly = null; }
+    controls.update();
+    const dist = camera.position.distanceTo(controls.target);
+    camera.near = Math.min(1, Math.max(0.01, dist * 0.01)); camera.far = Math.max(4 * diag, dist * 4); camera.updateProjectionMatrix();
+    renderer.render(scene, camera); placeLabels();
+  };
+  loop();
+  window.__model = {S, parts, mtoSpec, camera, controls};
+}
+main();
+</script>
+
+</body></html>

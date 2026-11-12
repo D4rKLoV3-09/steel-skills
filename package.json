@@ -1,0 +1,6 @@
+{
+  "name": "steel-skills",
+  "private": true,
+  "description": "local copies of the viewer's CDN libraries for the browser tests",
+  "dependencies": { "three": "0.128.0", "exceljs": "4.4.0" }
+}
