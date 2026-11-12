@@ -10,7 +10,7 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 ## Setup (once per session)
 - In Claude Code you are already in the repo (`CLAUDE.md` says where things are). In a claude.ai cloud session: attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`) and clone it. `npm install` in its root before the browser tests.
 - Drawings come from `jobs/<job>/`; results go to `jobs/<job>/out/`; a model's data lives in `models/<name>/`. In Claude Code the page is the HTML file (open it in a browser); in a claude.ai session it is also published as an Artifact.
-- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `tests/` (regress, rules_check, ui_check, retag_check, ub42_from_old). Read a script's docstring, not the whole file, unless changing it.
+- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `tests/` (regress, rules_check, ui_check, retag_check, ub42_from_old, clash_check = SAT clash + host-contact gaps on the real prisms). Read a script's docstring, not the whole file, unless changing it.
 - The MTO builder for "the MTO" is `generate-mto/build_mto.py` in the same repo.
 
 ## 0. Standing rules and ask-first

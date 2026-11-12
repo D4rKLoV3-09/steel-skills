@@ -23,6 +23,9 @@ End at a / b:
   [cut, ...]          explicit: {"host": id, "face": "near"|"far"|"+u"|"-u"|"+v"|"-v"|"web"|"+w"|"-w"|"cope"} or
                       {"plane": [nx, ny, nz, d]} (plane n.x = d); the member keeps the side its body is on
                       add "only": "web" | "flanges" | [plate indices] to cut only some plates (copes);
+                      "cope" on an I host (member depth parallel to the host's): the web is split at the host's
+                      inner flange faces, the band between them runs to the host web, the rest stops at the
+                      flange tips (true notch, no web inside a host flange);
                       plate order: I = +u flange, -u flange, web; SHS = +u, -u, +v, -v walls;
                       LIPC = base, +v side, +v lip, -v side, -v lip
 Welded = zero gap: each section plate is clipped by every bearing plane (half-space clip, capped),
@@ -178,6 +181,22 @@ def expand(c):
     return [dict(c, face="near", only="flanges"), dict(c, face="web", only="web")]
 
 
+def cope_band(m, host):
+    """u-range of the member web that lies between the host's flanges (member u parallel to host u),
+    or None. Outside it the web would run into a host flange, so it stops at the flange tips."""
+    pf = host["_pf"]
+    if pf["type"] != "I" or m["_pf"]["type"] != "I":
+        return None
+    a, _, _, u, _ = m["_f"]
+    ha, _, _, hu, _ = host["_f"]
+    k = u @ hu
+    if abs(k) < 0.999:
+        return None
+    inner = pf["h"] / 2 - pf["tf"]
+    lo, hi = sorted(((hu @ ha + s * inner) - hu @ a) / k for s in (-1, 1))
+    return lo, hi
+
+
 def end_cuts(m, which, by_id, members):
     spec = (m.get("ends") or ["auto", "auto"])[which]
     a, b, x, _, _ = m["_f"]
@@ -191,22 +210,33 @@ def end_cuts(m, which, by_id, members):
                 if h is not m and h.get("rank", 9) < rank
                 and dist_point_segment(end_pt, h["_f"][0], h["_f"][1]) <= AUTO_TOL]
     planes = []
-    for c in [e for c0 in spec for e in expand(c0)]:
-        if "plane" in c:
-            n, d = np.asarray(c["plane"][:3], float), float(c["plane"][3])
-        else:
-            n, d = host_plane(by_id[c["host"]], c["face"], into)
-        n, d = keep_side(n, d, body)
-        only = c.get("only")
-        if only == "web":
-            only = [2]
-        elif only == "flanges":
-            only = [0, 1]
-        planes.append((n, d, None if only is None else set(only)))
+    for c0 in spec:
+        band = cope_band(m, by_id[c0["host"]]) if c0.get("face") == "cope" else None
+        near = keep_side(*host_plane(by_id[c0["host"]], "near", into), body) if band else None
+        for c in expand(c0):
+            if "plane" in c:
+                n, d = np.asarray(c["plane"][:3], float), float(c["plane"][3])
+            else:
+                n, d = host_plane(by_id[c["host"]], c["face"], into)
+            n, d = keep_side(n, d, body)
+            only = c.get("only")
+            if only == "web":
+                only = [2]
+            elif only == "flanges":
+                only = [0, 1]
+            # cope web: only the band between the host flanges runs to the host web, the rest stops at the flange tips
+            split = (band, near) if band and c.get("face") == "web" else None
+            planes.append((n, d, None if only is None else set(only), split))
     return planes
 
 
 # ---------------- build ----------------
+def split_u(r, ts):
+    """Split plate rectangle r = (u0, u1, v0, v1) at the u values ts that fall inside it."""
+    us = sorted({r[0], r[1]} | {t for t in ts if r[0] < t < r[1]})
+    return [(p, q, r[2], r[3]) for p, q in zip(us, us[1:]) if q - p > EPS]
+
+
 def build_member(m, by_id, members, profiles):
     pf = m["_pf"]
     a, b, x, u, v = m["_f"]
@@ -216,15 +246,25 @@ def build_member(m, by_id, members, profiles):
     s1 = L + EXTEND if cuts[1] else L
     prisms = []
     for k, r in enumerate(plates(pf)):
-        faces = box(a, x, u, v, s0, s1, r)
-        for n, d, only in cuts[0] + cuts[1]:
-            if only is not None and k not in only:
-                continue
-            faces = clip(faces, n, d)
-            if not faces:
-                break
-        if faces:
-            prisms.append(faces)
+        bands = [r]
+        for *_, only, split in cuts[0] + cuts[1]:
+            if split and (only is None or k in only):
+                (lo, hi), _ = split
+                bands = [nb for b in bands for nb in split_u(b, (lo, hi))]
+        for br in bands:
+            faces = box(a, x, u, v, s0, s1, br)
+            for n, d, only, split in cuts[0] + cuts[1]:
+                if only is not None and k not in only:
+                    continue
+                if split:
+                    (lo, hi), near = split
+                    if not (lo - EPS <= br[0] and br[1] <= hi + EPS):
+                        n, d = near
+                faces = clip(faces, n, d)
+                if not faces:
+                    break
+            if faces:
+                prisms.append(faces)
     V = np.array([p for pr in prisms for f in pr for p in f])
     s = V @ x
     cut_len = float(s.max() - s.min())
