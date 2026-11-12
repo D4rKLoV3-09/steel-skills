@@ -31,14 +31,17 @@ async def main(html):
         await page.wait_for_function("window.__model", timeout=240000)
         await page.wait_for_timeout(3000)
         # tower chip
-        await page.click("#chips button:text-is('UB42')")
+        await page.click("#chips button:text-is('Truss UB42')")
         await page.wait_for_timeout(1500)
         r = await page.evaluate("""() => ({crumbs: [...document.querySelectorAll('#crumbs button')].map(b => b.innerText + (b.classList.contains('on') ? '*' : '')),
             n: window.__model.S.sel.length, unit: [...new Set(window.__model.S.sel.map(i => window.__model.parts[i].unit))].map(u => D.units[u]),
             name: document.querySelector('#info').innerText.split('\\n')[0]})""")
         good = r["n"] == 204 and r["unit"] == ["Truss UB42"]
         ok &= good
-        print("chip UB42 ->", r, "OK" if good else "FAIL")
+        chips = await page.eval_on_selector_all("#chips button", "bs => bs.map(b => b.innerText)")
+        good &= all(c.startswith("Truss ") or c == "Columns + frames" for c in chips)
+        print("chips:", chips)
+        print("chip Truss UB42 ->", r, "OK" if good else "FAIL")
         await page.screenshot(path=str(OUT / "ui_chip.png"))
         # Labels button
         before = await page.evaluate("() => [window.__model.S.labels, document.querySelector('#cLabels').checked]")

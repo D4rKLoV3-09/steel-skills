@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a steel MTO workbook: Summary matrix (categories x units) + one Qty-Breakdown sheet per unit.
 Usage:  python3 build_mto.py spec.json out.xlsx      (spec format: see SKILL.md)
+Summary notes: "decisions" (shown first, only when present), "assumptions", "left_out" ("Nothing left out." when empty).
 Unit-sheet columns A..W: Item | Material Section (B:F) | Category | Grade | Description | Mark |
 Unit wt | Surface area m2/m | Length | Width | Thk | Qty | Set | Weight | Painted area m2 |
 Run (m) | Area (m2) | kg/m run | Dim source (last).  Every category appears on every
@@ -269,16 +270,22 @@ def summary_sheet(ws, spec, links):
     for rr in (r, r + 1):
         for c in range(1, acol + 5):
             ws.cell(rr, c).border, ws.cell(rr, c).font = TOT_B, f(12, True)
-    r += 4
-    ws.cell(r, 1, "ASSUMPTIONS / ITEMS TO VERIFY").font = f(12, True)
-    for a in spec.get("assumptions", []):
-        r += 1
-        ws.cell(r, 1, "-").font = f(10)
-        ws.cell(r, 1).alignment = Alignment(horizontal="right", vertical="top")
-        c = ws.cell(r, 2, a)
-        c.font, c.alignment = f(10), Alignment(wrap_text=True, vertical="top")
-        ws.merge_cells(f"B{r}:{last}{r}")
-        ws.row_dimensions[r].height = 15 * max(2, -(-len(a) // 170))
+    r += 2
+    # notes for Yang, most urgent first: decisions (only when there are any), assumptions, left out
+    sections = [("DECISIONS FOR YOU", spec.get("decisions", []))] if spec.get("decisions") else []
+    sections += [("ASSUMPTIONS / ITEMS TO VERIFY", spec.get("assumptions", [])),
+                 ("LEFT OUT OF THIS TAKE-OFF", spec.get("left_out") or ["Nothing left out."])]
+    for title, items in sections:
+        r += 2
+        ws.cell(r, 1, title).font = f(12, True)
+        for a in items:
+            r += 1
+            ws.cell(r, 1, "-").font = f(10)
+            ws.cell(r, 1).alignment = Alignment(horizontal="right", vertical="top")
+            c = ws.cell(r, 2, a)
+            c.font, c.alignment = f(10), Alignment(wrap_text=True, vertical="top")
+            ws.merge_cells(f"B{r}:{last}{r}")
+            ws.row_dimensions[r].height = 15 * max(2, -(-len(a) // 170))
 
 
 def build(spec, out):

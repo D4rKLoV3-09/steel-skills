@@ -10,7 +10,7 @@ description: "Steel material take-off (MTO/weight/tonnage/BOQ) for any steel str
 Why: one sheet per unit (a unit that differs is visible and editable alone); the same lettered categories on every sheet (the Summary reads as a matrix); traceability (every row leads to a drawing dimension, a catalogue kg/m and a counted quantity).
 
 ## Setup (once per session)
-Attach Yang's private repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`) and clone it. Use `generate-mto/build_mto.py` (spec.json -> workbook) and `generate-mto/references/consteel_catalogue.md` (Consteel 2025 kg/m and m2/m: **grep it for the sections you need, never read it whole**). Read the builder's docstring, not the code, unless changing it; a builder change also goes into the page port (`generate-model/viewer_template.html`, check with `generate-model/tests/mto_parity.py`) and is committed.
+Attach Yang's private repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`) and clone it. Use `generate-mto/build_mto.py` (spec.json -> workbook) and `generate-mto/references/consteel_catalogue.md` (Consteel 2025 kg/m and m2/m: **grep it for the sections you need, never read it whole**). Read the builder's docstring, not the code, unless changing it. **This agent owns the MTO format:** `build_mto.py` and its ExcelJS port `port/mto_workbook.js` (generate-model injects the port into every model page at build time). Change both together, run `tests/mto_parity.py <a built model page>` and `tests/test_columns.py`, commit. The agent definition is `.claude/agents/generate-mto.md`.
 
 ## Workflow
 1. **Read the inputs** (drawings, Tekla/IFC reports, model part lists, previous MTOs, revisions Yang describes). Title block and revision status first (Rule A).
@@ -55,7 +55,7 @@ Attach Yang's private repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`)
 A TOWER BODY - COLUMNS, FRAMES, DIAGONALS · B RAKER FRAME AND SPLICE FRAME BEAMS · C COLUMN SPLICES, PLATES AND BOLTS · D TOP MODULE - HEAD FRAME, DECK FRAME, CHEQUERED PLATE, JOINT CHANNELS · E JACK HEAD - BUILT-UP HEAD BEAMS, STOPPERS, JACK PLATES, PACKS · F TOP-CHORD PROPS, TIES, FIN PLATES AND LIFTING LUGS · G PROPOSED BRACING (STEEL HUB UPGRADE) · H RAKING SUPPORT TRUSSES · I I-BEAM SUPPORTS · J ACCESS - LANDING, LADDERS, DECK RAILS, REST PLATFORM · K STEEL BASE - GRILLAGE AND GRID. Adapt titles; add or drop letters only for a real package; keep letters continuous.
 
 ## Workbook layout (made by the builder)
-- Summary: title block rows 1-5; row 7 `Sl. No. | Description | <units> | Total (kg) | Unit | Rate | Amount | Painted area (m2) | Run (m) | Area (m2) | kg/m run`; Sub-Total, Check row, allowance %, Allowance, GRAND TOTAL kg and tonnes; ASSUMPTIONS / ITEMS TO VERIFY.
+- Summary: title block rows 1-5; row 7 `Sl. No. | Description | <units> | Total (kg) | Unit | Rate | Amount | Painted area (m2) | Run (m) | Area (m2) | kg/m run`; Sub-Total, Check row, allowance %, Allowance, GRAND TOTAL kg and tonnes; then the notes for Yang: **DECISIONS FOR YOU** (only when there are any), **ASSUMPTIONS / ITEMS TO VERIFY**, **LEFT OUT OF THIS TAKE-OFF** (each item with why and sheet; "Nothing left out." when empty).
 - Unit sheets A-W: `Item | Material Section (B:F) | Category | Grade | Description | Mark | Unit wt (kg/m, kg/m2) / kg/no | Surface area (m2/m) | Length | Width | Thk | Qty | Set | Weight (kg) | Painted area (m2) | Run (m) | Area (m2) | kg/m run | Dim source / basis` (last, 9 pt, never wrapped). Blue = input, green = cross-sheet link, red fill = ASSUMED, purple fill = SCALED (key in the last column of row 6). Prints A:V landscape, one page wide.
 
 ## Spec JSON
@@ -72,7 +72,9 @@ A TOWER BODY - COLUMNS, FRAMES, DIAGONALS · B RAKER FRAME AND SPLICE FRAME BEAM
    {"kind": "area", "cat": "GRT", "grade": "HDG", "desc": "Grating 32x5 @ 30", "mark": "GRT1", "kgm": 39.5, "len": 6000, "wid": 1000, "qty": 2, "assumed": ["kgm"], "src": "..."},
    {"kind": "measure", "uom": "m2", "cat": "Deck", "desc": "Bondek II 1.0 BMT", "mark": "BDK1", "len": 6000, "wid": 3000, "qty": 2, "assumed": ["desc"], "src": "..."}]}}],
  "rates": {"A": 6.5},
- "assumptions": ["..."]}
+ "decisions": ["Grating weight: supplier figure, or keep 39.5 kg/m2 (+/- 0.4 t)?"],
+ "assumptions": ["..."],
+ "left_out": ["Anchor bolts - by others (GA-001 note 4)"]}
 ```
 `assumed` / `scaled` list the fields to fill red / purple (cat, grade, desc, mark, kgm, m2m, len, wid, thk, qty, set).
 

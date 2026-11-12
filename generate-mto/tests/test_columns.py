@@ -47,7 +47,7 @@ def spec():
             "currency": "RM", "unit_label": "unit", "grand_total_label": "2 UNITS", "allowance": 0, "categories": cats,
             "units": [{"name": "U1", "rows": {"A": steel, "B": hr, "C": grt, "D": bdk}},
                       {"name": "U2", "rows": {"A": steel, "B": hr}}],
-            "assumptions": ["test"]}
+            "assumptions": ["test"], "decisions": ["Grating weight: supplier figure or keep 39.5 kg/m2?"], "left_out": []}
 
 
 def expected():
@@ -105,6 +105,12 @@ def main():
             good = abs(g - e["grand_kg"]) < 0.5
             ok &= good
             print(f"  grand total {g:.1f} kg expected {e['grand_kg']:.1f} (bondek not in tonnage) {'OK' if good else 'MISMATCH'}")
+    col_b = [str(s.cell(r, 2).value or "") for r in range(1, s.max_row + 1)]
+    col_a = [str(s.cell(r, 1).value or "") for r in range(1, s.max_row + 1)]
+    heads = [h for h in col_a if h in ("DECISIONS FOR YOU", "ASSUMPTIONS / ITEMS TO VERIFY", "LEFT OUT OF THIS TAKE-OFF")]
+    good = heads == ["DECISIONS FOR YOU", "ASSUMPTIONS / ITEMS TO VERIFY", "LEFT OUT OF THIS TAKE-OFF"] and "Nothing left out." in col_b
+    ok &= good
+    print("summary note sections:", heads, "| empty left-out reads 'Nothing left out.':", "Nothing left out." in col_b, "OK" if good else "MISMATCH")
     print("ALL OK" if ok else "FAILED")
     return 0 if ok else 1
 

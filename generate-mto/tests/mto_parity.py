@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Page export (ExcelJS port) vs generate-mto build_mto.py: same spec -> same workbook, cell by cell.
+"""Page export (port/mto_workbook.js inside a built model page) vs build_mto.py: same spec -> same
+workbook, cell by cell. Run after any change to build_mto.py or the port.
 
-    python tests/mto_parity.py PAGE.html
+    python tests/mto_parity.py PAGE.html          (a page built by generate-model/build_model.py)
 
 Specs: the page's own mtoSpec(null) (whole model) and the MTO columns test spec (handrail, grating, bondek).
 Compares value/formula, font, fill, number format, alignment, border, merges, column widths, print area.
@@ -18,8 +19,8 @@ import sys
 import openpyxl
 from playwright.async_api import async_playwright
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-MTO = pathlib.Path(os.environ.get("MTO_DIR", str(ROOT.parent / "generate-mto")))
+MTO = pathlib.Path(__file__).resolve().parents[1]                 # generate-mto
+ROOT = MTO.parent / "generate-model"                              # page side of the hand-over
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(MTO))
 sys.path.insert(0, str(MTO / "tests"))

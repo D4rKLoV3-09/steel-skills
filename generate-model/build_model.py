@@ -4,7 +4,8 @@
     python build_model.py DATA.json OUT.html [--template viewer_template.html]
 
 DATA.json is the model data block (parts with convex prisms, groups, layers, units, ...).
-The fixed viewer UI lives in viewer_template.html; project text comes from data["meta"],
+The fixed viewer UI lives in viewer_template.html; the MTO export code is injected from
+generate-mto/port/mto_workbook.js (the MTO agent owns the workbook format); project text comes from data["meta"],
 data["header"] and data["noteSections"]. Nothing project-specific is hard-coded in the template.
 """
 import argparse
@@ -69,7 +70,7 @@ def validate(d):
     return errs
 
 
-def build(data_path, out_path, template_path):
+def build(data_path, out_path, template_path, port_path):
     d = json.loads(pathlib.Path(data_path).read_text(encoding="utf-8"))
     errs = validate(d)
     if errs:
@@ -78,8 +79,10 @@ def build(data_path, out_path, template_path):
     raw = json.dumps(d, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     b64 = base64.b64encode(gzip.compress(raw, compresslevel=9, mtime=0)).decode("ascii")
     tpl = pathlib.Path(template_path).read_text(encoding="utf-8")
-    assert tpl.count("@@DATA@@") == 1 and tpl.count("@@TITLE@@") == 1, "template placeholders damaged"
-    html = tpl.replace("@@TITLE@@", d["meta"]["title"]).replace("@@DATA@@", b64)
+    assert tpl.count("@@DATA@@") == 1 and tpl.count("@@TITLE@@") == 1 and tpl.count("/*@@MTO_PORT@@*/") == 1, "template placeholders damaged"
+    port = pathlib.Path(port_path).read_text(encoding="utf-8")     # the MTO format belongs to generate-mto
+    assert "function buildWorkbook(spec)" in port, f"{port_path} is not the MTO workbook port"
+    html = tpl.replace("@@TITLE@@", d["meta"]["title"]).replace("/*@@MTO_PORT@@*/", port).replace("@@DATA@@", b64)
     size_mb = len(html.encode("utf-8")) / 1e6
     pathlib.Path(out_path).write_text(html, encoding="utf-8", newline="")
     kg = sum(p["kg"] for p in d["parts"])
@@ -96,5 +99,7 @@ if __name__ == "__main__":
     ap.add_argument("data")
     ap.add_argument("out")
     ap.add_argument("--template", default=str(here / "viewer_template.html"))
+    ap.add_argument("--mto-port", default=str(here.parent / "generate-mto" / "port" / "mto_workbook.js"),
+                    help="ExcelJS port of build_mto.py, owned by generate-mto")
     a = ap.parse_args()
-    sys.exit(build(a.data, a.out, a.template))
+    sys.exit(build(a.data, a.out, a.template, a.mto_port))

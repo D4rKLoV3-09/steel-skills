@@ -152,14 +152,19 @@ function buildWorkbook(spec){
   ws.getCell(r + 1, 2).value = `GRAND TOTAL - ${label} (tonnes)`;
   const g2 = ws.getCell(r + 1, tcol); g2.value = fx(`=${T}${r}/1000`); g2.numFmt = '#,##0.00';
   for (const rr of [r, r + 1]) for (let c = 1; c <= acol + 4; c++){ const cell = ws.getCell(rr, c); cell.border = TOT_B; cell.font = f(12, true); }
-  r += 4;
-  const ah = ws.getCell(r, 1); ah.value = 'ASSUMPTIONS / ITEMS TO VERIFY'; ah.font = f(12, true);
-  for (const a of spec.assumptions || []){
-    r++;
-    const d = ws.getCell(r, 1); d.value = '-'; d.font = f(10); d.alignment = {horizontal: 'right', vertical: 'top'};
-    const c = ws.getCell(r, 2); c.value = a; c.font = f(10); c.alignment = {wrapText: true, vertical: 'top'};
-    ws.mergeCells(`B${r}:${last}${r}`);
-    ws.getRow(r).height = 15 * Math.max(2, Math.ceil(a.length / 170));
+  r += 2;
+  const sections = (spec.decisions && spec.decisions.length) ? [['DECISIONS FOR YOU', spec.decisions]] : [];
+  sections.push(['ASSUMPTIONS / ITEMS TO VERIFY', spec.assumptions || []], ['LEFT OUT OF THIS TAKE-OFF', (spec.left_out && spec.left_out.length) ? spec.left_out : ['Nothing left out.']]);
+  for (const [title, items] of sections){
+    r += 2;
+    const ah = ws.getCell(r, 1); ah.value = title; ah.font = f(12, true);
+    for (const a of items){
+      r++;
+      const d = ws.getCell(r, 1); d.value = '-'; d.font = f(10); d.alignment = {horizontal: 'right', vertical: 'top'};
+      const c = ws.getCell(r, 2); c.value = a; c.font = f(10); c.alignment = {wrapText: true, vertical: 'top'};
+      ws.mergeCells(`B${r}:${last}${r}`);
+      ws.getRow(r).height = 15 * Math.max(2, Math.ceil(a.length / 170));
+    }
   }
   return wb;
 }
