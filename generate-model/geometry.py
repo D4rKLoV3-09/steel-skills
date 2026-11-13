@@ -6,7 +6,7 @@
 Spec (what Claude writes after reading the drawings):
 {
   "profiles": {"UC 152x152x23": {"type": "I", "h": 152.4, "b": 152.2, "tw": 5.8, "tf": 6.8, "kgm": 23.0}, ...},
-      types: I (h b tw tf) | SHS (b t) | RHS (h b t, h along up) | LIPC lipped channel open to +u (h b t lip) | PL flat (b t)
+      types: I (h b tw tf) | SHS (b t) | RHS (h b t, h along up) | CHS (d t; 16 flat wall segments) | LIPC lipped channel open to +u (h b t lip) | PL flat (b t)
   "members": [{
       "id": "TC-N", "t": "X-UB42-TC", "prof": "UC 203x203x46",
       "a": [x, y, z], "b": [x, y, z],        work points in mm (centre line runs WP to WP)
@@ -63,11 +63,22 @@ def plates(pf):
                 (-h / 2 + s, h / 2, -b / 2, -b / 2 + s), (h / 2 - s, h / 2, -b / 2 + s, -b / 2 + s + lip)]
     if t == "PL":
         return [(-pf["t"] / 2, pf["t"] / 2, -pf["b"] / 2, pf["b"] / 2)]
+    if t == "CHS":
+        return []                        # round: wall segments from chs_walls(), not u/v rectangles
     raise ValueError(f"unknown profile type {t}")
+
+
+def chs_walls(pf, n=16):
+    """CHS wall as n convex quads in (u, v): outer corners on the outside diameter."""
+    ro, ri = pf["d"] / 2, pf["d"] / 2 - pf["t"]
+    c = [(np.cos(2 * np.pi * i / n), np.sin(2 * np.pi * i / n)) for i in range(n + 1)]
+    return [[(ri * p[0], ri * p[1]), (ro * p[0], ro * p[1]), (ro * q[0], ro * q[1]), (ri * q[0], ri * q[1])] for p, q in zip(c, c[1:])]
 
 
 def half_dims(pf):
     """Half depth (u) and half width (v) of the section envelope."""
+    if pf["type"] == "CHS":
+        return pf["d"] / 2, pf["d"] / 2
     if pf["type"] == "SHS":
         return pf["b"] / 2, pf["b"] / 2
     if pf["type"] == "PL":
@@ -95,10 +106,15 @@ def frame(m):
 def box(a, x, u, v, s0, s1, r):
     """Prism of one section plate r=(u0,u1,v0,v1) between s0 and s1 along x. Faces CCW seen from outside."""
     u0, u1, v0, v1 = r
+    return prism(a, x, u, v, s0, s1, [(u0, v0), (u1, v0), (u1, v1), (u0, v1)])
+
+
+def prism(a, x, u, v, s0, s1, poly):
+    """Prism of a convex section polygon [(u, v), ...] between s0 and s1 along x."""
     P = lambda s, uu, vv: a + s * x + uu * u + vv * v
-    c = [P(s0, u0, v0), P(s0, u1, v0), P(s0, u1, v1), P(s0, u0, v1),
-         P(s1, u0, v0), P(s1, u1, v0), P(s1, u1, v1), P(s1, u0, v1)]
-    idx = [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+    k = len(poly)
+    c = [P(s0, *p) for p in poly] + [P(s1, *p) for p in poly]
+    idx = [(0, *range(k - 1, 0, -1)), tuple(range(k, 2 * k))] + [(i, (i + 1) % k, (i + 1) % k + k, i + k) for i in range(k)]
     faces = [[c[i] for i in f] for f in idx]
     # make every face outward (x, u, v may be a left-handed triad only if v was flipped by caller)
     ctr = np.mean(c, axis=0)
@@ -249,6 +265,12 @@ def build_member(m, by_id, members, profiles):
     s0 = -EXTEND if cuts[0] else 0.0
     s1 = L + EXTEND if cuts[1] else L
     prisms = []
+    for poly in (chs_walls(pf) if pf["type"] == "CHS" else []):       # round: plain plane cuts, no cope bands
+        faces = prism(a, x, u, v, s0, s1, poly)
+        for n, d, only, split in cuts[0] + cuts[1]:
+            faces = clip(faces, *(split[1] if split else (n, d))) if faces else faces
+        if faces:
+            prisms.append(faces)
     for k, r in enumerate(plates(pf)):
         bands = [r]
         for *_, only, split in cuts[0] + cuts[1]:

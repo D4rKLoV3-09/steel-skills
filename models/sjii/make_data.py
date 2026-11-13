@@ -120,6 +120,12 @@ def g(level, name, label=None):
 
 
 by_id = {m["id"]: i for i, m in enumerate(M)}
+DEPTH = lambda n: spec["profiles"][n].get("h", spec["profiles"][n].get("d", spec["profiles"][n].get("b")))
+WORD = {"deep": "frames into the shallower", "butt": "butts in line with", "wide": "is wider than its"}
+caution_of = {}
+for c in extra["cautions"]:
+    other = f"{mapping[c['on']]} (Ref {c['on']})" if c["on"] in mapping else c["on"]
+    caution_of.setdefault(c["id"], []).append(f"{WORD[c['k']]} {other}")
 out = []
 for m, p in zip(M, parts):
     lay = m["layer"]
@@ -130,6 +136,8 @@ for m, p in zip(M, parts):
     q.update({"t": TAG_FIX.get(lay) or mapping[m["ref"]], "layer": LI[lay], "unit": UI[m["_u"]],
               "tw": g("tower", BLD[b], "Building"), "sub": -1, "desc": m["prof"],
               "grid": grid_txt((a[0] + e[0]) / 2, (a[1] + e[1]) / 2, ctb) + f" @ {LVN[lv]}"})
+    if m["id"] in caution_of:
+        q["src"] = "CAUTIOUS: " + "; ".join(caution_of[m["id"]]) + " | " + q.get("src", "")
     if m["ref"]:
         q["ref"] = m["ref"]
         q["desc"] = f"{m['prof']} ({m['ref']})"
@@ -160,6 +168,25 @@ for m, q in zip(M, out):
     q["sub"] = g("sub", f"Shear studs SS1 on {host['t']} @ {host['grid']}")
 
 # ---------------- notes ----------------
+from sections import SCHED  # noqa: E402
+grp = {}
+for c in extra["cautions"]:
+    grp.setdefault((c["bldg"], c["k"], c["mark"], c["on"]), []).append(c)
+sec = lambda r: f"{mapping[r]} (Ref {r}, {SCHED[r]})" if r in mapping else r
+TXT = {"deep": "{a} frames into the shallower {b}", "butt": "{a} butts in line with {b} - different sections",
+       "wide": "{a} is wider than its {b}"}
+cautions = []
+for (b, k, mk, on), cs in sorted(grp.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+    lvs = sorted({c["floor"].split("-")[1] for c in cs}, key=list(LVN).index)
+    dwg = sorted({re.search(r"S-\d{4}", c["sheet"]).group(0) for c in cs})
+    cautions.append(f"{BLD[b]}: " + TXT[k].format(a=sec(mk), b=sec(on)) + f" - {len(cs)} joint{'s' if len(cs) > 1 else ''} "
+                    f"on {', '.join(LVN[v] for v in lvs)} ({', '.join(dwg)})")
+CAUT_MAX = 30
+cautions_mto = cautions[:CAUT_MAX] + ([f"+ {len(cautions) - CAUT_MAX} more pairs ({sum(len(v) for v in grp.values()) - sum(len(v) for v in sorted(grp.values(), key=len, reverse=True)[:CAUT_MAX])} joints) - full list in the model Notes; every such member reads CAUTIOUS in its source line"] if len(cautions) > CAUT_MAX else [])
+n_ends = 2 * sum(1 for m in M if m["layer"] == "beam")
+n_free = sum(v["free_ends"] for v in extra["floors"].values())
+n_float = sum(v["floating"] for v in extra["floors"].values())
+n_line = sum(k == "line" for m in M if m["layer"] == "beam" for k in m["end_kind"])
 fl = extra["floors"]
 kg_steel = sum(q["kg"] for q, m in zip(out, M) if m["layer"] in ("beam", "col"))
 not_cons = sorted({n for n, r in extra["prof_info"].items() if r["kg_assumed"]})
@@ -184,10 +211,14 @@ assumptions = [
     f"Top of steel = FFL - {150} (150 BDK slab on the plans, no screed allowed) on every floor; all beams top-flange flush, web vertical.",
     "Plan positions read from the vector GA plans at 1:200 (70.56 mm/pt), calibrated on the grid bubbles (all bays 9,000; EDU BM-BN 4,500); "
     "ES and HS share grid B7 (duplicates on B7 removed).",
-    "Beam ends: at an RC column / wall the beam stops where drawn (embed / cleat connection not detailed); secondary beams run to the axis of the "
-    "beam they meet and are coped into it (welded, zero gap); free ends as drawn. Curved beams modelled as straight chords (about 12 per beam).",
+    "Beam ends: the plans draw every beam line short of its support, so every end is run on to its neighbour within 1.5 m - the face of a column "
+    "(RC or steel), the axis of the beam it meets (coped into it, zero gap; where several meet the deepest runs through), or the beam in line with it "
+    "(butt joint at mid-gap). Lengths in this MTO are therefore support to support, not the drawn line lengths.",
+    f"{n_line} beam ends ({n_line / n_ends * 100:.1f} %) stop on a drawn line without a mark (RC wall edge or unmarked member); {n_free} ends ({n_free / n_ends * 100:.1f} %) "
+    f"found no neighbour within 1.5 m and stay as drawn (cantilever tip or a support not on the steel plans); {n_float} beams have no support found at either end; "
+    f"{len(extra['open'])} joints where the supporting beam is drawn stopping short. Curved beams modelled as straight chords (about 12 per beam).",
     "Steel columns D40H (CHS406.4x14.2) and SC01 (SHS1200x1200x30, concrete filled - concrete by others) placed at their marks, from the floor below "
-    "to the TOS of the floor they are marked on; CHS shown as an equal-area square box (weight from Consteel CHS).",
+    "to the TOS of the floor they are marked on. RC columns shown round or rectangular as drawn (ghost, by others).",
     "Unit weights and m2/m from Consteel 2025 (hollow sections hot-finished; RHS200x100x5 only cold-formed). UB/UC tw/tf in the 3D view derived from kg/m (display only). "
     "m2/m for hollow sections and sections not in Consteel computed from the outline - red.",
     "Grade S355JR for all structural steel (General Notes S-0001 note 6); bolts 8.8 (note 17) - no bolts modelled (connections not detailed).",
@@ -200,7 +231,7 @@ left = [
     "Trusses CTB1, CTB2, CTB3 (S-8101) and ES1 / ES1a / HS1 (S-8201) - see Decisions (CTB4 plan S-2104 and ES / HS 4th storey plans show their lines).",
     f"{n_free_beam} beam marks not tied to a drawn line ({', '.join(f'{k} {len(v)}' for k, v in sorted(fm.items()) if k not in ('D40H', 'SC01'))}) - mostly dashed "
     "transfer members (BU09, C35KK) and marks placed off the line.",
-    f"{len(extra['skipped'].get('too short after snapping', []))} drawn pieces shorter than 100 mm after joining to their supports.",
+    f"{len(extra['skipped'].get('too short after joining', []))} drawn pieces shorter than 100 mm after joining to their supports.",
     "All connections (fin plates, end plates, cleats, embeds to RC, splices, stiffeners) and bolts - not detailed on the tender GA set.",
     "Basement B1 (S-2100) and 1st storey ES / HS (S-2221 / S-2321): no steel framing marked; EDU overall plans S-2201..2212 (key plans, no marks) not used.",
     "RC columns (ghost), core walls, RC slab topping, mesh, propping, fire protection (intumescent / board) - by others or not steel.",
@@ -222,17 +253,19 @@ data = {
     "layers": [{"k": k, "n": n, "c": c} for k, n, c in LAYERS],
     "units": [n for _, n in UNITS], "unitKeys": [k for k, _ in UNITS],
     "ghosts": extra["ghosts"], "gx": gx, "gy": gy, "profs": profs, "cats": cats,
-    "notes": assumptions, "left": left, "assumptions": assumptions, "decisions": decisions,
+    "notes": assumptions, "left": left, "assumptions": assumptions, "decisions": decisions, "cautions": cautions_mto,
     "noteSections": [
         {"title": "Basis", "items": [
             "Arup tender drawings T1 (30/10/26): GA plans Central Block S-2101..2108, Education ES S-2221..2229, HS S-2321..2332; general notes S-0001 / 0002; composite slab S-0033.",
             "Member tags are Yang's (UB beams, UC columns, BDK / SS / EF); the drawing mark (B45Q, B61V, ...) is kept as Ref and is searchable.",
             "One MTO unit per building and storey; building = tower; every beam is its own lift unit (single loose piece)."]},
+        {"title": "Cautious (big member on a small support, or different sections butting)", "items": cautions or ["Nothing to flag."]},
+        {"title": "Left out of the model", "from": "left"},
         {"title": "Decisions for Yang", "items": decisions},
-        {"title": "Assumptions", "from": "assumptions"},
-        {"title": "Left out of the model", "from": "left"}],
+        {"title": "Assumptions", "from": "assumptions"}],
 }
 json.dump(data, open(sys.argv[4], "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 print(f"{len(out)} parts, steel {kg_steel:,.0f} kg, {len(groups)} groups, {len(UNITS)} units; tags: "
       + ", ".join(f"{k} {v}" for k, v in sorted(count.items())))
+print(f"cautious: {len(cautions)} pairs, {len(extra['cautions'])} joints")
 print("mapping:", ", ".join(f"{k}->{v}" for k, v in mapping.items()))

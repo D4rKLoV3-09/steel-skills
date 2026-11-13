@@ -230,7 +230,7 @@ function buildGhosts(){
   const gl = D.layers.findIndex(l => l.k === 'ghost');
   const op = S.layerOp[gl] ?? 0.15;
   for (const g of D.ghosts){
-    const geo = new THREE.BoxGeometry(g.s[0] / 1000, g.s[2] / 1000, g.s[1] / 1000);
+    const geo = g.r ? new THREE.CylinderGeometry(g.r / 1000, g.r / 1000, g.s[2] / 1000, 24) : new THREE.BoxGeometry(g.s[0] / 1000, g.s[2] / 1000, g.s[1] / 1000);
     const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color: 0x9aa3ad, transparent: true, opacity: op, depthWrite: false, clippingPlanes: clipPlanes}));
     m.position.copy(W(g.c[0], g.c[1], g.c[2]));
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color: 0x6f7a85, transparent: true, opacity: 0.6, clippingPlanes: clipPlanes}));
@@ -621,7 +621,7 @@ function mtoSpec(ids){
     units.push({name: (D.meta.unit_names || {})[u] || u, rows});
   });
   return {header: D.header, currency: D.meta.currency, unit_label: 'unit', grand_total_label: D.meta.grand_total_label, allowance: 0,
-    categories: D.cats.map(c => ({code: c.code, title: c.title, dwg: c.dwg})), units, assumptions: D.assumptions, left_out: D.left, decisions: D.decisions || []};
+    categories: D.cats.map(c => ({code: c.code, title: c.title, dwg: c.dwg})), units, assumptions: D.assumptions, left_out: D.left, decisions: D.decisions || [], cautions: D.cautions || []};
 }
 function colL(n){ let s = ''; while (n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
 /*@@MTO_PORT@@*/

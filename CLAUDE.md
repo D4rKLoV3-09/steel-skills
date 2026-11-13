@@ -1,20 +1,21 @@
 # steel-skills: Yang's steel agents
 
 Yang (Steel Hub Engineering, Johor) runs his steel work here: 3D models (`generate-model` skill) and material
-take-offs (`generate-mto` agent). Reply in Chinese unless asked otherwise, pyramid form (conclusion first),
+take-offs (`generate-mto` agent). Reply in the language Yang writes in (English to English, Chinese to Chinese),
+pyramid form (conclusion first),
 short and actionable. When a choice is genuinely Yang's, give 2-3 options instead of guessing.
 
 ## Where things are
-- `.claude/skills/generate-model/SKILL.md`: 3D model rules. Code: `generate-model/` (viewer_template.html, geometry.py, build_model.py, tests/).
+- `.claude/skills/generate-model/SKILL.md`: 3D model rules. Code: `generate-model/` (viewer_template.html, geometry.py, build_model.py, ga_plan.py = GA floor plans -> connected framing, tests/).
 - `.claude/skills/generate-mto/SKILL.md` + `.claude/agents/generate-mto.md`: the MTO agent. Code: `generate-mto/` (build_mto.py, port/, references/, tests/).
-- `models/<name>/`: a model's data (`<name>.data.json`) and its revision scripts. Rebuild a page from here.
+- `models/<name>/`: a model's data (`<name>.data.json`) and its scripts; `build.py` there runs the whole chain (drawings -> page -> MTO -> checks) in one command. Rebuild from here.
 - `jobs/<job>/`: Yang's drawings for a job (not uploaded to GitHub). Write results to `jobs/<job>/out/`.
 
 ## Job routine
 1. Read every drawing in `jobs/<job>/`. Ask only what blocks the work; otherwise decide, label it, go on.
-2. Model asked: spec.json -> `geometry.py` -> data.json -> `build_model.py` -> `jobs/<job>/out/<name>.html`; run the skill's checks; keep the data in `models/<name>/`.
-3. MTO asked (or "model + MTO"): hand the spec (the model page's `mtoSpec`, or rows read from the drawings) to the **generate-mto** agent; it returns `jobs/<job>/out/<Project>_MTO.xlsx` and a report.
-4. Reply: result first, then **Decisions for you**, **Assumptions to confirm**, **Left out** (or "Nothing left out.").
+2. Model asked: `python models/<name>/build.py` (spec -> `geometry.py` -> data -> checks -> `build_model.py` -> page). New job: copy the scripts of the closest existing model (floor plans: `models/sjii/`) and change the numbers; never write a reader or a viewer again.
+3. MTO asked: from a model, `build.py` already makes it (`generate-mto/page_mtospec.js` -> `build_mto.py`, no agent). Without a model (rows from drawings, IFC / Tekla report, previous MTO): the **generate-mto** agent.
+4. Reply: result and file links first, then only what failed or needs Yang now, plus one line of hints (e.g. how many Cautious joints). The lists go into the MTO Summary and the model Notes in this order, not into the reply: **Cautious**, **Left out** (or "Nothing left out."), **Decisions for you**, **Assumptions to confirm**. No check results unless a check failed or was not run.
 5. Commit code or model-data changes with a clear message; push when Yang says so.
 
 ## Standing rules (Yang)
@@ -26,5 +27,9 @@ short and actionable. When a choice is genuinely Yang's, give 2-3 options instea
 - Selecting a handrail assembly in a model shows its kg/m run.
 - Ghost structures: ask before putting them into an IFC.
 - Erection sequence on a model: never edit the original; copy it as "<title> with-sequence".
+- Steel never floats: a gap drawn between a member and its neighbour (steel or RC) is drawing convention. Run every end on to what it connects to, zero gap; anything left without a support is counted and reported.
+- Other trades' members (RC columns, walls) are shown in their drawn shape: a round column is round, never a box.
+- **Cautious**: wherever a big member meets a small one (deeper than its supporting beam, wider than its column, different sections butting in line; hollow sections and channels too), hint Yang in the reply and list it in the MTO Summary under CAUTIOUS, above Left out.
+- Speed: a job is scripts, not chat. One `build.py` per model; test into the scratch folder; print counts instead of reading JSON; no agent for what a script does; fix the shared script, not the output.
 - Search for an existing library before writing non-trivial custom code.
 - Files for Windows use CRLF line endings (always for .bat).

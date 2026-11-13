@@ -63,9 +63,9 @@ def lookup(mark):
     if m.group(1) == "CHS":
         od, t = m.group(2), float(m.group(3))
         kg = _hollow("CHS", od, t)
-        return {"name": des, "type": "SHS", "b": round(float(od) * 0.886, 1), "t": t, "kgm": kg, "m2m": round(3.1416 * float(od) / 1000, 3),
+        return {"name": des, "type": "CHS", "d": float(od), "t": t, "kgm": kg, "m2m": round(3.1416 * float(od) / 1000, 3),
                 "m2m_assumed": True, "kg_assumed": False, "src": f"Consteel 2025 CHS hot finished {od} t{t:g} {kg:g} (hot-finished assumed); "
-                "m2/m computed - ASSUMED; shown as an equal-area square in the model"}
+                "m2/m computed - ASSUMED"}
     kind, d, b, t = m.group(1), int(m.group(2)), int(m.group(3)), float(m.group(4))
     kg, form = _hollow(kind, f"{d}x{b}", t), "hot finished"
     if kg is None:                                   # size only rolled cold-formed (e.g. RHS200x100x5)
@@ -82,5 +82,5 @@ def lookup(mark):
 if __name__ == "__main__":
     for k in SCHED:
         r = lookup(k)
-        print(f"{k:6} {r['name']:20} {r['kgm']:8} {r.get('h', '')!s:7} {r['b']:7} m2m {r['m2m']}{' *' if r['m2m_assumed'] else ''}"
+        print(f"{k:6} {r['name']:20} {r['kgm']:8} {r.get('h', '')!s:7} {r.get('b', r.get('d')):7} m2m {r['m2m']}{' *' if r['m2m_assumed'] else ''}"
               f"{'  KG ASSUMED' if r['kg_assumed'] else ''}")

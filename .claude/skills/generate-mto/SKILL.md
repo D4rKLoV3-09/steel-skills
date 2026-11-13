@@ -55,7 +55,7 @@ In Claude Code you are already in the repo; in a claude.ai cloud session attach 
 A TOWER BODY - COLUMNS, FRAMES, DIAGONALS · B RAKER FRAME AND SPLICE FRAME BEAMS · C COLUMN SPLICES, PLATES AND BOLTS · D TOP MODULE - HEAD FRAME, DECK FRAME, CHEQUERED PLATE, JOINT CHANNELS · E JACK HEAD - BUILT-UP HEAD BEAMS, STOPPERS, JACK PLATES, PACKS · F TOP-CHORD PROPS, TIES, FIN PLATES AND LIFTING LUGS · G PROPOSED BRACING (STEEL HUB UPGRADE) · H RAKING SUPPORT TRUSSES · I I-BEAM SUPPORTS · J ACCESS - LANDING, LADDERS, DECK RAILS, REST PLATFORM · K STEEL BASE - GRILLAGE AND GRID. Adapt titles; add or drop letters only for a real package; keep letters continuous.
 
 ## Workbook layout (made by the builder)
-- Summary: title block rows 1-5; row 7 `Sl. No. | Description | <units> | Total (kg) | Unit | Rate | Amount | Painted area (m2) | Run (m) | Area (m2) | kg/m run`; Sub-Total, Check row, allowance %, Allowance, GRAND TOTAL kg and tonnes; then the notes for Yang: **DECISIONS FOR YOU** (only when there are any), **ASSUMPTIONS / ITEMS TO VERIFY**, **LEFT OUT OF THIS TAKE-OFF** (each item with why and sheet; "Nothing left out." when empty).
+- Summary: title block rows 1-5; row 7 `Sl. No. | Description | <units> | Total (kg) | Unit | Rate | Amount | Painted area (m2) | Run (m) | Area (m2) | kg/m run`; Sub-Total, Check row, allowance %, Allowance, GRAND TOTAL kg and tonnes; then the notes for Yang, always in this order: **CAUTIOUS** (only when there are any: a big member on a small support - deeper than its supporting beam, wider than its column, different sections butting in line; hollow sections and channels too), **LEFT OUT OF THIS TAKE-OFF** (each item with why and sheet; "Nothing left out." when empty), **DECISIONS FOR YOU** (only when there are any), **ASSUMPTIONS / ITEMS TO VERIFY**. These lists live here, not in the reply.
 - Unit sheets A-W: `Item | Material Section (B:F) | Category | Grade | Description | Mark | Unit wt (kg/m, kg/m2) / kg/no | Surface area (m2/m) | Length | Width | Thk | Qty | Set | Weight (kg) | Painted area (m2) | Run (m) | Area (m2) | kg/m run | Dim source / basis` (last, 9 pt, never wrapped). Blue = input, green = cross-sheet link, red fill = ASSUMED, purple fill = SCALED (key in the last column of row 6). Prints A:V landscape, one page wide.
 
 ## Spec JSON
@@ -72,6 +72,7 @@ A TOWER BODY - COLUMNS, FRAMES, DIAGONALS · B RAKER FRAME AND SPLICE FRAME BEAM
    {"kind": "area", "cat": "GRT", "grade": "HDG", "desc": "Grating 32x5 @ 30", "mark": "GRT1", "kgm": 39.5, "len": 6000, "wid": 1000, "qty": 2, "assumed": ["kgm"], "src": "..."},
    {"kind": "measure", "uom": "m2", "cat": "Deck", "desc": "Bondek II 1.0 BMT", "mark": "BDK1", "len": 6000, "wid": 3000, "qty": 2, "assumed": ["desc"], "src": "..."}]}}],
  "rates": {"A": 6.5},
+ "cautions": ["Tower A: UB10 (Ref B61S, UB610x305x149) butts in line with UB20 (Ref BU09, UC465x421x589) - 6 joints on 4th Storey (S-2224)"],
  "decisions": ["Grating weight: supplier figure, or keep 39.5 kg/m2 (+/- 0.4 t)?"],
  "assumptions": ["..."],
  "left_out": ["Anchor bolts - by others (GA-001 note 4)"]}

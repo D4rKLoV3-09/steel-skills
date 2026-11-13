@@ -10,8 +10,9 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 ## Setup (once per session)
 - In Claude Code you are already in the repo (`CLAUDE.md` says where things are). In a claude.ai cloud session: attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`) and clone it. `npm install` in its root before the browser tests.
 - Drawings come from `jobs/<job>/`; results go to `jobs/<job>/out/`; a model's data lives in `models/<name>/`. In Claude Code the page is the HTML file (open it in a browser); in a claude.ai session it is also published as an Artifact.
-- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `read_drawing.py` (vector PDF -> marks + lines), `tests/` (regress, rules_check, ui_check, retag_check, ub42_from_old, read_drawing_check, clash_check = SAT clash + host-contact gaps on the real prisms). Read a script's docstring, not the whole file, unless changing it.
-- The MTO builder for "the MTO" is `generate-mto/build_mto.py` in the same repo.
+- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms; I, SHS, RHS, CHS, LIPC, PL), `build_model.py` (data -> page, validates), `read_drawing.py` (vector PDF -> marks + lines), `ga_plan.py` (GA floor plans -> connected framing: merge / pair / outlines / connect / bondek), `tests/` (regress, rules_check, ui_check, retag_check, ub42_from_old, read_drawing_check, ga_plan_check, clash_check = SAT clash + host-contact gaps on the real prisms, bondek-package parts left out). Read a script's docstring, not the whole file, unless changing it.
+- The MTO builder for "the MTO" is `generate-mto/build_mto.py` in the same repo; `node generate-mto/page_mtospec.js PAGE DATA SPEC` gives it the page's own `mtoSpec`.
+- **Speed (Yang's rule): a job is one command.** Every model keeps `models/<name>/build.py` (drawings -> spec -> geometry -> data -> clash -> page -> mtoSpec -> MTO -> recalculation checks, a few minutes, prints only what failed). New job = copy the closest model's scripts and change the numbers. While developing: test into the scratch folder, print counts instead of reading spec / data JSON, no agent for what a script does, and put anything reusable into `generate-model/` rather than the job folder.
 
 ## 0. Standing rules and ask-first
 - **Member tags:** always Yang's tags (section 4), never the drawing's or a supplied model's own tags. The original tag goes in `ref`; both are searchable.
@@ -19,6 +20,9 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 - **Handrail:** flag top rails `rail: "top"` (the page shows kg/m run on a handrail selection; the build stops without it). Grating parts get `mto: {kind: "area", kgm: <kg/m2>, wid: ...}`.
 - **Outside model** (IFC, other artifact, HTML): ask whether to break it into selectable parts or keep one reference object.
 - **Connections:** welded = zero gap; bolted = a sensible bolted connection (plates, bolt sets, holes).
+- **Steel never floats.** A gap drawn between a member and its neighbour (another member, an RC column or wall) is drawing convention: run every end on to what it connects to (column face; axis of the beam it meets, coped; the beam in line, butt joint). Count what is left without a support and write the count into Assumptions.
+- **Drawn shapes:** other trades' members are ghosts in their drawn shape (ghost `r` = round column, else box); a CHS is a `CHS` profile, never a square.
+- **Cautious:** every joint where a big member meets a small one (deeper than its supporting beam, wider than its column, different sections butting in line; hollow sections and channels too) goes into `cautions` (MTO Summary CAUTIOUS, model Notes) and the member's source line reads CAUTIOUS; hint the count in the reply.
 - **Marked-up scope:** model only the highlighted scope as steel; neighbours as ghost (transparent, edges, not weighed, not selectable).
 - **Ghosts and IFC:** ask before putting ghosts into an IFC.
 - **Sequence mode:** only when Yang asks (section 6b).
@@ -30,6 +34,7 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 - Members drawn as separate pieces stay separate pieces at their own levels.
 - Model every plate, stiffener, lug, clevis, bolt (head, shank, nut) and back plate the details show, in the drawn shapes. Undimensioned size: pick a sensible value and list it. Never invent hardware; ask about unclear symbols.
 - Keep a **Left out** list while reading (item, reason, sheet), for section 8.
+- **GA floor plans (members = marked lines on 1:100 / 1:200 plans): do not write a reader.** Copy `models/sjii/` (read_plans.py = sheet list, mark pattern, line widths, levels, grids; sections.py = schedule -> Consteel; make_spec.py; make_data.py; build.py) and change the numbers. `ga_plan.py` reads the lines and marks, finds the column outlines (round or rectangular), joins every end to its neighbour (`connect`), returns the Cautious joints and adds the bondek package (`bondek`).
 - Proprietary parts with a photo or sample are modelled to look like the sample.
 
 ## 2. Geometry (geometry.py does the cutting; you decide the inputs)
@@ -78,7 +83,7 @@ Write `spec.json` (generate repetitive members with a short Python loop): profil
 - Layers and colours: one layer per member type (Columns, Beams, Ledgers, Bracing + clevises, Stubs + lugs + back plates, Splice + cap + stiffener plates, Base plates, Bolts + nuts, Ghost, plus project layers). A reference structure layer includes what is welded to it (splice rings, fin plates on an arch section go in e.g. "Arch W2 + W1"). Reference sections: W3 red, W2 orange, W1 yellow, M green, E1 cyan, E2 blue, E3 purple; splice rings neutral. Reference objects solid with their real weight; ghosts about 15 % with edges. Ties as wire rope (rope, turnbuckle, shackles, lug) when Yang specifies rope.
 - MTO grade: drawing grade when stated; G8.8 bolts; a grade Claude assumed is *S275; proprietary TBC. Unit weights and m2/m only from Consteel (`generate-mto/references/consteel_catalogue.md`, grep it).
 - Template behaviour Yang asked for (keep it): tower chips fly to the unit and select it; Grid and Labels toggles in the toolbar; the panel always on the right (narrower on small screens, never below the view); entering Sequence mode opens Select. A page cannot start a skill itself: say so if Yang asks.
-- **The MTO belongs to the generate-mto agent.** The page's Export runs the agent's port (`generate-mto/port/mto_workbook.js`, injected by `build_model.py`; never edit the workbook code in the template). For "the MTO", hand the page's `mtoSpec` (with `left_out` from the Left-out list and `decisions`) to generate-mto. Unit names show in full (`Truss UB42`), never bare `UB42`, because beam tags use UB.
+- **The MTO format belongs to generate-mto.** The page's Export runs its port (`generate-mto/port/mto_workbook.js`, injected by `build_model.py`; never edit the workbook code in the template). For "the MTO" of a model, `build.py` runs `page_mtospec.js` + `build_mto.py` directly (no agent); the data carries `cautions`, `left`, `decisions`, `assumptions` and the Summary prints them in that order. Unit names show in full (`Truss UB42`), never bare `UB42`, because beam tags use UB.
 - **Not in the template yet:** bolt summary table under the Bolts + nuts layer (rows per bolt mark, sub-total per size, total; counts only what is shown), bolt and proprietary `piece` rows in `mtoSpec`, Sequence mode (6b). Add them to the template in the repo the first time a model needs them, run the tests, commit.
 
 ## 6b. Sequence mode (only when Yang asks)
@@ -94,5 +99,5 @@ Write `spec.json` (generate repetitive members with a short Python loop): profil
 3. Change `spec.json` / data with a Python script (assert every replacement), rebuild with `geometry.py` and `build_model.py`.
 4. Run the section 3 checks. Publish to the same artifact URL.
 5. Template or script change: commit and push to the repo (message says what and why).
-6. Reply short: **Assumptions to confirm** (skip if none), **Left out of the model** (always, bold heading: each drawn item not modelled with why and sheet, counts or % where many; or exactly "Nothing left out."), **Decisions for you** (skip if none). No recap of what changed.
+6. Reply short, in Yang's language: result and file links, then only what failed or was not run, and one line of hints (Cautious count, anything he must act on now). **Cautious**, **Left out** (always; each drawn item not modelled with why and sheet, counts or % where many; or exactly "Nothing left out."), **Decisions for you** and **Assumptions to confirm** are written into the MTO Summary and the model Notes in that order, not repeated in the reply. No recap of what changed.
 7. Save new standing rules to memory when Yang states them.

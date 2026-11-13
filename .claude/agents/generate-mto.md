@@ -20,6 +20,10 @@ an IFC / Tekla report, a previous MTO with Yang's change list. Plus any standing
 - Bondek package wherever a slab sits on Yang's steel, with the default spec, marked ASSUMED.
 - Grade not stated: `*S275`.
 
+## Cautious ("cautions" on the Summary, above Left out)
+- Every joint you can see where a big member meets a small one: deeper than its supporting beam, wider than its column, different sections
+  butting in line (hollow sections and channels too). One line per pair of marks with the count, level and sheet.
+
 ## What goes to Yang ("decisions" on the Summary and in your report)
 - Any gap that moves the total by 2 % or more, with 2-3 options and the tonnage of each.
 - A conflict between drawings / revisions you cannot resolve from the title blocks.
@@ -27,9 +31,10 @@ an IFC / Tekla report, a previous MTO with Yang's change list. Plus any standing
 Never stop the whole job for a decision: build with your best option, list the decision.
 
 ## Hand-over format
-- In: MTO spec JSON as in the skill (units, categories, rows, assumptions, decisions, left_out).
+- In: MTO spec JSON as in the skill (units, categories, rows, cautions, left_out, decisions, assumptions).
 - Out: `<Project>_MTO.xlsx` built only by `build_mto.py`, plus a report in pyramid form:
-  grand total (t) -> per-unit totals and largest categories -> decisions for Yang -> top assumptions.
+  grand total (t) -> per-unit totals and largest categories -> only the checks that failed -> one line of hints (Cautious count, decisions waiting).
+  The Cautious / Left out / Decisions / Assumptions lists stay in the workbook; do not repeat them in the report.
 
 ## Before you hand back
 Recalculate with LibreOffice and check as the skill says (no # errors, Sub-Total = Check, painting /

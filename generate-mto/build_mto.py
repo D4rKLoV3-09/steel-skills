@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build a steel MTO workbook: Summary matrix (categories x units) + one Qty-Breakdown sheet per unit.
 Usage:  python3 build_mto.py spec.json out.xlsx      (spec format: see SKILL.md)
-Summary notes: "decisions" (shown first, only when present), "assumptions", "left_out" ("Nothing left out." when empty).
+Summary notes in Yang's order: "cautions" (CAUTIOUS, only when present), "left_out" ("Nothing left out." when empty),
+"decisions" (only when present), "assumptions".
 Unit-sheet columns A..W: Item | Material Section (B:F) | Category | Grade | Description | Mark |
 Unit wt | Surface area m2/m | Length | Width | Thk | Qty | Set | Weight | Painted area m2 |
 Run (m) | Area (m2) | kg/m run | Dim source (last).  Every category appears on every
@@ -271,10 +272,12 @@ def summary_sheet(ws, spec, links):
         for c in range(1, acol + 5):
             ws.cell(rr, c).border, ws.cell(rr, c).font = TOT_B, f(12, True)
     r += 2
-    # notes for Yang, most urgent first: decisions (only when there are any), assumptions, left out
-    sections = [("DECISIONS FOR YOU", spec.get("decisions", []))] if spec.get("decisions") else []
-    sections += [("ASSUMPTIONS / ITEMS TO VERIFY", spec.get("assumptions", [])),
-                 ("LEFT OUT OF THIS TAKE-OFF", spec.get("left_out") or ["Nothing left out."])]
+    # notes for Yang, in his order: cautious, left out, decisions, assumptions
+    sections = [("CAUTIOUS", spec["cautions"])] if spec.get("cautions") else []
+    sections.append(("LEFT OUT OF THIS TAKE-OFF", spec.get("left_out") or ["Nothing left out."]))
+    if spec.get("decisions"):
+        sections.append(("DECISIONS FOR YOU", spec["decisions"]))
+    sections.append(("ASSUMPTIONS / ITEMS TO VERIFY", spec.get("assumptions", [])))
     for title, items in sections:
         r += 2
         ws.cell(r, 1, title).font = f(12, True)

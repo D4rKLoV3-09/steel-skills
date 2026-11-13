@@ -8,6 +8,7 @@ Penetration: every pair of convex prisms from different parts whose overlap on e
 Gap (needs the spec): every member end that names a host must touch it; the SAT separation between
 the member and its host is a lower bound of the true gap, so a reported gap is a real one. A cut marked
 "sep": true only keeps a member off something and is not checked.
+Parts counted by measure (mto kind "measure": bondek deck, studs, edgeform) are indicative solids and are left out.
 Exit code 0 = no penetration over tol (gaps are reported, they do not fail the run).
 """
 import itertools
@@ -62,7 +63,7 @@ def main():
     tol = float(sys.argv[sys.argv.index("--tol") + 1]) if "--tol" in sys.argv else 0.5
     d = json.load(open(args[0], encoding="utf-8"))
     parts = d["parts"] if isinstance(d, dict) else d
-    pr = prisms(parts)
+    pr = [p for p in prisms(parts) if (parts[p[0]].get("mto") or {}).get("kind") != "measure"]
     lo = np.array([p[1].min(0) for p in pr]); hi = np.array([p[1].max(0) for p in pr])
     order = np.argsort(lo[:, 0])
     hits = {}
