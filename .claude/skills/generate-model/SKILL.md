@@ -10,7 +10,7 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 ## Setup (once per session)
 - In Claude Code you are already in the repo (`CLAUDE.md` says where things are). In a claude.ai cloud session: attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`) and clone it. `npm install` in its root before the browser tests.
 - Drawings come from `jobs/<job>/`; results go to `jobs/<job>/out/`; a model's data lives in `models/<name>/`. In Claude Code the page is the HTML file (open it in a browser); in a claude.ai session it is also published as an Artifact.
-- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `tests/` (regress, rules_check, ui_check, retag_check, ub42_from_old, clash_check = SAT clash + host-contact gaps on the real prisms). Read a script's docstring, not the whole file, unless changing it.
+- Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `read_drawing.py` (vector PDF -> marks + lines), `tests/` (regress, rules_check, ui_check, retag_check, ub42_from_old, read_drawing_check, clash_check = SAT clash + host-contact gaps on the real prisms). Read a script's docstring, not the whole file, unless changing it.
 - The MTO builder for "the MTO" is `generate-mto/build_mto.py` in the same repo.
 
 ## 0. Standing rules and ask-first
@@ -24,6 +24,7 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 - **Sequence mode:** only when Yang asks (section 6b).
 
 ## 1. Reading drawings
+- **Vector PDF fast path** (`generate-model/read_drawing.py`; PyMuPDF `import fitz` is the PDF library here, pypdf and poppler are not installed): `info` (text per sheet + 40 dpi overviews) -> `words` for grid bubbles / level markers -> calibrate each view from one long dimension (mm per pt) -> `members` per view (dashed lines merged, each paired with its mark) -> snap to the dimension chains. Render a crop only to settle a question the vectors cannot answer (what a line is, which way a member faces); never read whole sheets as images. Put a job's reading in `models/<name>/make_spec.py` as numbers, not in throwaway scratch scripts.
 - Read every sheet incl. later revisions (a rev02 "for reference" sheet overrides older levels). State which sheet each tower or frame came from.
 - Each tower or frame has its own levels; never copy one elevation onto all. No elevation: say so and state the assumption.
 - Members drawn as separate pieces stay separate pieces at their own levels.
