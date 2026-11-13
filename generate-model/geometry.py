@@ -6,7 +6,7 @@
 Spec (what Claude writes after reading the drawings):
 {
   "profiles": {"UC 152x152x23": {"type": "I", "h": 152.4, "b": 152.2, "tw": 5.8, "tf": 6.8, "kgm": 23.0}, ...},
-      types: I (h b tw tf) | SHS (b t) | LIPC lipped channel open to +u (h b t lip) | PL flat (b t)
+      types: I (h b tw tf) | SHS (b t) | RHS (h b t, h along up) | LIPC lipped channel open to +u (h b t lip) | PL flat (b t)
   "members": [{
       "id": "TC-N", "t": "X-UB42-TC", "prof": "UC 203x203x46",
       "a": [x, y, z], "b": [x, y, z],        work points in mm (centre line runs WP to WP)
@@ -52,6 +52,10 @@ def plates(pf):
         b, s = pf["b"], pf["t"]
         return [(b / 2 - s, b / 2, -b / 2, b / 2), (-b / 2, -b / 2 + s, -b / 2, b / 2),
                 (-b / 2 + s, b / 2 - s, b / 2 - s, b / 2), (-b / 2 + s, b / 2 - s, -b / 2, -b / 2 + s)]
+    if t == "RHS":                       # h along u (depth), b along v
+        h, b, s = pf["h"], pf["b"], pf["t"]
+        return [(h / 2 - s, h / 2, -b / 2, b / 2), (-h / 2, -h / 2 + s, -b / 2, b / 2),
+                (-h / 2 + s, h / 2 - s, b / 2 - s, b / 2), (-h / 2 + s, h / 2 - s, -b / 2, -b / 2 + s)]
     if t == "LIPC":
         h, b, s, lip = pf["h"], pf["b"], pf["t"], pf["lip"]
         return [(-h / 2, -h / 2 + s, -b / 2, b / 2),

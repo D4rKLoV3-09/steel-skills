@@ -610,7 +610,7 @@ function mtoSpec(ids){
       const pf = D.profs[a.prof] || {};
       if (a.mto){ const m = a.mto;
         rows[a.cat].push({kind: m.kind, uom: m.uom, cat: m.cat ?? pf.cat, grade: a.grade, desc: m.desc ?? a.mdesc ?? a.prof, mark: a.t, kgm: m.kgm,
-          len: m.len ?? (a.plate ? a.plate.L : a.L), wid: m.wid ?? (a.plate ? a.plate.W : undefined), qty: a.n, set: 1, run: a.run, src: m.src ?? a.src, assumed: m.assumed}); }
+          len: m.len ?? (a.plate ? a.plate.L : a.L), wid: m.wid ?? (a.plate ? a.plate.W : undefined), qty: a.n, set: m.set ?? 1, run: a.run, src: m.src ?? a.src, assumed: m.assumed}); }
       else if (a.plate) rows[a.cat].push({kind: 'plate', cat: 'Plate', grade: a.grade, desc: `PL${a.plate.t} ${a.desc}` + (a.plate.tri ? ' - triangles nested 2 per rectangle' : ''), mark: a.t,
         len: a.plate.L, wid: a.plate.W, thk: a.plate.t, qty: a.plate.tri ? a.n / 2 : a.n, set: 1, src: `${a.src}; plate 7.85`});
       else rows[a.cat].push({kind: 'length', d: pf.d, w: pf.w, t: pf.t, cat: pf.cat, grade: a.grade, desc: a.mdesc || a.prof, mark: a.t, kgm: pf.kgm, m2m: pf.m2m, len: a.L, qty: a.n, set: 1,
