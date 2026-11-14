@@ -113,8 +113,37 @@ def main():
     good = heads == order and "Nothing left out." in col_b
     ok &= good
     print("summary note sections:", heads, "| empty left-out reads 'Nothing left out.':", "Nothing left out." in col_b, "OK" if good else "MISMATCH")
+    errs2 = only_what_exists()
+    ok &= not errs2
+    print("only what exists (steel-only spec):", errs2 or "OK")
     print("ALL OK" if ok else "FAILED")
     return 0 if ok else 1
+
+
+def only_what_exists():
+    """No handrail, grating or bondek rows anywhere: those categories and the Run / Area / kg/m run columns are not shown."""
+    sp = spec()
+    for u in sp["units"]:
+        u["rows"] = {"A": u["rows"]["A"]}
+    x = OUT / "steel_only.xlsx"
+    build_mto.build(sp, str(x))
+    wb = openpyxl.load_workbook(x)
+    errs = []
+    for ws in wb.worksheets:
+        text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value is not None)
+        for word in ("HANDRAIL", "GRATING", "BONDEK"):
+            if word in text:
+                errs.append(f"{ws.title}: {word} shown although no such rows exist")
+    u1 = wb["U1"]
+    for col in ("T", "U", "V"):
+        if not u1.column_dimensions[col].hidden:
+            errs.append(f"U1 column {col} visible although unused")
+    if u1.cell(7, 23).value != "Dim source / basis":
+        errs.append("Dim source / basis is no longer the last column")
+    full = openpyxl.load_workbook(OUT / "cols.xlsx")
+    if full and any(full["U1"].column_dimensions[c].hidden for c in ("T", "U", "V")):
+        errs.append("full spec: a used quantity column is hidden")
+    return errs
 
 
 if __name__ == "__main__":

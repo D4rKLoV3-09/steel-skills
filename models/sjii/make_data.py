@@ -83,9 +83,10 @@ def grid_txt(x, y, ctb):
 
 
 # ---------------- layers / categories ----------------
-LAYERS = [("beam", "Floor beams (UB)", "#4f7cac"), ("truss", "Trusses (TC / BC / W)", "#b5543f"), ("col", "Steel columns (UC)", "#c9822b"), ("bdk", "Bondek deck", "#a7b3bf"),
-          ("ss", "Shear studs (one row per beam)", "#d4a017"), ("ef", "Edgeform", "#5d7385"), ("ghost", "Ghost (RC columns, by others)", "#9aa3ad")]
+LAYERS = [("beam", "Floor beams (UB)", "#4f7cac"), ("truss", "Trusses (TC / BC / W)", "#b5543f"), ("col", "Steel columns (UC)", "#c9822b"), ("bdk", "Bondek package (deck, studs, edgeform)", "#a7b3bf"),
+          ("ghost", "Ghost (RC columns, by others)", "#9aa3ad")]
 LI = {k: i for i, (k, _, _) in enumerate(LAYERS)}
+LI["ss"] = LI["ef"] = LI["bdk"]          # Yang: bondek, studs and edgeform share one layer, hidden when the page opens
 CATS = [("A", "FLOOR BEAMS (UB) - STEEL FABRICATED FRAMING", ["beam"], "GA plans CTB S-2101..2108, ES S-2221..2229, HS S-2321..2332 (T1)"),
         ("B", "TRUSSES (TC / BC / W) - CTB1-3, ES1, ES1a, HS1, HS2", ["truss"], "S-8101, S-8201 elevations; positions S-2104, S-2224, S-2324, S-2326"),
         ("C", "STEEL COLUMNS (UC) - D40H CHS406.4 / SC01 SHS1200", ["col"], "ES / HS GA plans (marks at the column)"),
@@ -279,7 +280,7 @@ data = {
                "description": "STRUCTURAL STEEL - FLOOR BEAMS, STEEL COLUMNS, TRUSSES, BONDEK PACKAGE (from 3D model, rev 2)",
                "contractor": "", "date": "14-11-2026"},
     "parts": out, "groups": groups,
-    "layers": [{"k": k, "n": n, "c": c} for k, n, c in LAYERS],
+    "layers": [dict({"k": k, "n": n, "c": c}, **({"off": True} if k == "bdk" else {})) for k, n, c in LAYERS],
     "units": [n for _, n in UNITS], "unitKeys": [k for k, _ in UNITS],
     "ghosts": extra["ghosts"], "gx": gx, "gy": gy, "profs": profs, "cats": cats,
     "notes": assumptions, "left": left, "assumptions": assumptions, "decisions": decisions, "cautions": cautions_mto,

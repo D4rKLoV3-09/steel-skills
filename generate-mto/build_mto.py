@@ -5,8 +5,10 @@ Summary notes in Yang's order: "cautions" (CAUTIOUS, only when present), "left_o
 "decisions" (only when present), "assumptions".
 Unit-sheet columns A..W: Item | Material Section (B:F) | Category | Grade | Description | Mark |
 Unit wt | Surface area m2/m | Length | Width | Thk | Qty | Set | Weight | Painted area m2 |
-Run (m) | Area (m2) | kg/m run | Dim source (last).  Every category appears on every
-unit sheet (empty ones show Sub-Total 0) so the Summary rows stay aligned A..K across all units.
+Run (m) | Area (m2) | kg/m run | Dim source (last).  Only what the drawings show: a category with no row in
+any unit is left out of every sheet and the Summary, and the Run / kg/m run and Area columns are hidden when
+no row uses them (no handrail, no grating, no bondek = not shown). A category used by at least one unit stays
+on every unit sheet (Sub-Total 0 where empty) so the Summary rows stay aligned across the units.
 Row kinds: length | plate | piece | area (grating: kg/m2 x L x W) | measure (no weight: uom m2 / m / pcs,
 e.g. the Bondek package). Run (m) = len x qty x set on rows with "run": true (handrail top rail) and on
 measure rows in m (edgeform); Area (m2) = L x W x qty x set on area rows and measure rows in m2 (bondek);
@@ -66,6 +68,25 @@ NUMFMT = {11: "0.0##", 12: "0.00#", 13: "#,##0", 14: "#,##0", 15: "0.#", 16: "#,
 CENTER = (1, 7, 8, 10, 16, 17, 19, 20, 21, 22)
 
 
+def prune(spec):
+    """Leave out what is not there: categories without a row in any unit. Returns (spec, dropped titles)."""
+    used = [c for c in spec["categories"] if any(u.get("rows", {}).get(c["code"]) for u in spec["units"])]
+    if not used or len(used) == len(spec["categories"]):
+        return spec, []
+    keep = {c["code"] for c in used}
+    dropped = [f'{c["code"]} {c["title"]}' for c in spec["categories"] if c["code"] not in keep]
+    units = [dict(u, rows={k: v for k, v in u.get("rows", {}).items() if k in keep}) for u in spec["units"]]
+    return dict(spec, categories=used, units=units), dropped
+
+
+def uses(spec):
+    """(any Run row, any Area row) in the whole workbook: decides which quantity columns are shown."""
+    rows = [r for u in spec["units"] for rs in u.get("rows", {}).values() for r in rs]
+    run = any(r.get("run") or (kind(r) == "measure" and r.get("uom") == "m") for r in rows)
+    area = any(kind(r) == "area" or (kind(r) == "measure" and r.get("uom") == "m2") for r in rows)
+    return run, area
+
+
 def unit_sheet(wb, spec, unit):
     ws = wb.create_sheet(unit["name"])
     title_block(ws, spec["header"], 5)
@@ -85,6 +106,10 @@ def unit_sheet(wb, spec, unit):
     for i, w in enumerate(UNIT_W, 1):
         ws.column_dimensions[CL(i)].width = w
     ws.freeze_panes = "A8"
+    has_run, has_area = uses(spec)
+    for col, show in ((20, has_run), (21, has_area), (22, has_run)):       # Run (m), Area (m2), kg/m run
+        if not show:
+            ws.column_dimensions[CL(col)].hidden = True
 
     r, subs = 8, {}
     for cat in spec["categories"]:
@@ -202,6 +227,10 @@ def summary_sheet(ws, spec, links):
     widths = [7, 80] + [13] * n + [14, 7, 11, 13, 16, 11, 11, 10]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[CL(i)].width = w
+    has_run, has_area = uses(spec)
+    for k, show in ((2, has_run), (3, has_area), (4, has_run)):            # Run (m), Area (m2), kg/m run
+        if not show:
+            ws.column_dimensions[CL(acol + k)].hidden = True
 
     rates = spec.get("rates", {})
     r = 8
@@ -292,6 +321,9 @@ def summary_sheet(ws, spec, links):
 
 
 def build(spec, out):
+    spec, dropped = prune(spec)
+    if dropped:
+        print("left out (no rows in any unit): " + "; ".join(dropped))
     codes = [c["code"] for c in spec["categories"]]
     assert len(codes) == len(set(codes)), "duplicate category codes"
     for u in spec["units"]:

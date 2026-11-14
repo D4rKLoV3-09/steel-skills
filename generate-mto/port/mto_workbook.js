@@ -23,6 +23,13 @@ function buildWorkbook(spec){
   const NUMFMT = {11: '0.0##', 12: '0.00#', 13: '#,##0', 14: '#,##0', 15: '0.#', 16: '#,##0', 17: '#,##0', 18: '#,##0.0', 19: '#,##0.0', 20: '#,##0.00', 21: '#,##0.00', 22: '0.0'};
   const CENTER = [1, 7, 8, 10, 16, 17, 19, 20, 21, 22];
 
+  /* only what the drawings show (build_mto.py prune / uses): drop categories with no row in any unit, hide unused quantity columns */
+  { const used = spec.categories.filter(c => spec.units.some(u => ((u.rows || {})[c.code] || []).length));
+    if (used.length && used.length !== spec.categories.length){ const keep = new Set(used.map(c => c.code));
+      spec = Object.assign({}, spec, {categories: used, units: spec.units.map(u => Object.assign({}, u, {rows: Object.fromEntries(Object.entries(u.rows || {}).filter(([k]) => keep.has(k)))}))}); } }
+  const allRows = spec.units.flatMap(u => Object.values(u.rows || {}).flat());
+  const hasRun = allRows.some(r => r.run || (kind(r) === 'measure' && r.uom === 'm'));
+  const hasArea = allRows.some(r => kind(r) === 'area' || (kind(r) === 'measure' && r.uom === 'm2'));
   const codes = spec.categories.map(c => c.code);
   if (new Set(codes).size !== codes.length) throw new Error('duplicate category codes');
   for (const u of spec.units){ const bad = Object.keys(u.rows || {}).filter(k => !codes.includes(k)); if (bad.length) throw new Error(`${u.name}: rows under unknown categories ${bad}`); }
@@ -41,6 +48,8 @@ function buildWorkbook(spec){
     setPage(ws, '7:7');
     UNIT_W.forEach((w, i) => ws.getColumn(i + 1).width = w === 9 ? 9.0001 : w);  // ExcelJS omits width 9 (its default)
     ws.views = [{state: 'frozen', xSplit: 0, ySplit: 7, topLeftCell: 'A8'}];
+    if (!hasRun){ ws.getColumn(20).hidden = true; ws.getColumn(22).hidden = true; }
+    if (!hasArea) ws.getColumn(21).hidden = true;
 
     let r = 8; const subs = {};
     for (const cat of spec.categories){
@@ -111,6 +120,8 @@ function buildWorkbook(spec){
   ws.getRow(7).height = 32;
   setPage(ws, null);
   [7, 80, ...Array(n).fill(13), 14, 7, 11, 13, 16, 11, 11, 10].forEach((w, i) => ws.getColumn(i + 1).width = w === 9 ? 9.0001 : w);  // ExcelJS omits width 9 (its default)
+  if (!hasRun){ ws.getColumn(acol + 2).hidden = true; ws.getColumn(acol + 4).hidden = true; }
+  if (!hasArea) ws.getColumn(acol + 3).hidden = true;
   const rates = spec.rates || {};
   let r = 8;
   for (const cat of spec.categories){

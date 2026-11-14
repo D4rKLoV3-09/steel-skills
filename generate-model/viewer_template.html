@@ -28,7 +28,7 @@ button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 #view{grid-column:1;grid-row:2;position:relative;overflow:hidden;background:var(--view)}
 #view canvas{display:block;width:100%;height:100%;touch-action:none}
 #ov{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-.lbl{position:absolute;transform:translate(-50%,-50%);font-family:var(--mono);font-size:11px;white-space:nowrap;padding:1px 4px;border-radius:3px}
+.lbl{position:absolute;left:0;top:0;will-change:transform;font-family:var(--mono);font-size:11px;white-space:nowrap;padding:1px 4px;border-radius:3px}
 .glbl{color:var(--grid);background:color-mix(in srgb,var(--view) 80%,transparent)}
 .gbub{color:var(--grid);border:1.5px solid var(--grid);border-radius:50%;min-width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--view);font-weight:500;padding:0 3px}
 .ttag{color:var(--ink);background:var(--panel);border:1px solid var(--line);font-family:var(--font);font-weight:600;font-size:12px}
@@ -59,6 +59,14 @@ details[open]>summary::before{content:"▾"}
 .info dt{color:var(--muted)} .info dd{margin:0;min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .wt{color:var(--weight);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums}
 .btns{display:flex;flex-wrap:wrap;gap:5px}
+.btns3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.btns3 button,.btns2 button{padding:7px 4px;font-weight:600;text-align:center;overflow:hidden;text-overflow:ellipsis}
+.btns2{display:flex;gap:6px}
+.btns2 button{padding:7px 12px}
+button.primary{background:#2563eb;border-color:#2563eb;color:#fff}
+button.primary:hover{background:#1d4ed8;border-color:#1d4ed8}
+.dirs{display:flex;flex-wrap:wrap;gap:6px}
+.dirs button{padding:6px 12px;font-weight:600}
 input[type=text]{font:inherit;font-size:12px;width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
 .res{max-height:180px;overflow-y:auto;display:flex;flex-direction:column}
 .res button{text-align:left;background:none;border:none;border-bottom:1px solid var(--line);border-radius:0;font-family:var(--mono);font-size:11.5px;display:flex;justify-content:space-between;gap:8px}
@@ -97,15 +105,15 @@ input[type=checkbox]{accent-color:var(--accent);margin:0}
       <div class="crumbs" id="crumbs"></div>
       <div class="info" id="info"><span style="color:var(--muted)">Tap a member to select it. Tap again to step up to its lift unit and tower.</span></div>
       <div class="btns" id="prevnext" hidden><button id="bPrev">Prev</button><button id="bNext">Next</button><button id="bAllInst">Show all</button></div>
-      <div class="btns"><button id="bOnly">Show only</button><button id="bShowAll">Show all</button><button id="bHide">Hide</button></div>
-      <div class="btns"><button id="bSelAll">Select all</button><button id="bUndo">Undo</button><button id="bExport">Export</button></div>
+      <div class="btns3"><button id="bOnly">Show only</button><button id="bShowAll">Show all</button><button id="bHide">Hide</button>
+        <button id="bSelAll">Select all</button><button id="bUndo">Undo</button><button id="bExport" class="primary">Export</button></div>
       <input type="text" id="q" placeholder="Search, e.g. UC, C, PLT, BR." autocomplete="off">
       <div class="res" id="res"></div>
     </div></details>
-    <details id="dCut"><summary>Section</summary><div class="sec">
-      <div class="row"><select id="cutDir" aria-label="Section direction"><option value="top">Top</option><option value="left">Left</option><option value="right">Right</option><option value="front">Front</option><option value="back">Back</option></select>
-        <button id="cutOn">Section on</button><button id="cutOff">Clear section</button></div>
+    <details open id="dCut"><summary>Section</summary><div class="sec">
+      <div class="dirs" id="cutDirs" role="group" aria-label="Section direction"><button data-d="top" class="on">Top</button><button data-d="left">Left</button><button data-d="right">Right</button><button data-d="front">Front</button><button data-d="back">Back</button></div>
       <input type="range" id="cutPos" min="0" max="1000" value="500" aria-label="Section position">
+      <div class="btns2"><button id="cutOn">Section on</button><button id="cutOff">Clear section</button></div>
     </div></details>
     <details id="dLay"><summary>Layers</summary><div class="sec">
       <div id="layers" style="display:flex;flex-direction:column;gap:5px"></div>
@@ -153,7 +161,7 @@ async function loadData(){
 
 /* ---------------- state ---------------- */
 const S = { hidden: new Set(), towerOff: new Set(), layerOff: new Set(), layerOp: {}, sel: [], selChain: [], selLevel: 0, inst: null, instI: 0,
-  undo: [], measure: false, meas: [], pending: null, labels: true, grid: true, cut: null };
+  undo: [], measure: false, meas: [], pending: null, labels: true, grid: true, cut: null, cutDir: 'top' };
 let layerMeshes = [], layerEdges = [], ghostObjs = [], selMesh = null, selBox = null, clipPlanes = [];
 let gridGroup, gridLabels = [], towerTags = [], occCache = {key: '', vis: {}};
 
@@ -163,7 +171,7 @@ function visible(i){ const p = parts[i]; return !S.hidden.has(i) && !S.towerOff.
 function prepParts(){
   let lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
   for (const p of D.parts) for (const pr of p.pr) for (const f of pr) for (const v of f) for (let k = 0; k < 3; k++){ lo[k] = Math.min(lo[k], v[k]); hi[k] = Math.max(hi[k], v[k]); }
-  C0 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (D.meta.datum_z ?? lo[2])];
+  C0 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (D.meta.datum_z ?? lo[2])]; D._ext = {lo, hi};
   D.parts.forEach((p, i) => {
     const pos = [], nor = [], edges = [], corners = [], mids = [], cents = [];
     const ax = new THREE.Vector3(p.ax[0], p.ax[2], -p.ax[1]).normalize();
@@ -221,17 +229,18 @@ function buildLayers(){
     const le = new THREE.LineSegments(ge, new THREE.LineBasicMaterial({color: 0x10161c, transparent: true, opacity: 0.18 * op, clippingPlanes: clipPlanes}));
     le.frustumCulled = false; scene.add(le); layerEdges.push(le);
   });
-  const gl = D.layers.findIndex(l => l.k === 'ghost');
-  for (const o of ghostObjs) o.visible = !S.layerOff.has(gl) && S.ghostShown !== false;
+  for (const o of ghostObjs) o.visible = !S.layerOff.has(o.userData.gl) && S.ghostShown !== false;
   occCache.key = '';
   updateSelMesh(); updateCounts();
 }
 function buildGhosts(){
-  const gl = D.layers.findIndex(l => l.k === 'ghost');
-  const op = S.layerOp[gl] ?? 0.15;
+  const gl0 = D.layers.findIndex(l => l.k === 'ghost');
   for (const g of D.ghosts){
+    const gl = g.layer ?? gl0, L = D.layers[gl] || {};
+    const op = S.layerOp[gl] ?? 0.15;
     const geo = g.r ? new THREE.CylinderGeometry(g.r / 1000, g.r / 1000, g.s[2] / 1000, 24) : new THREE.BoxGeometry(g.s[0] / 1000, g.s[2] / 1000, g.s[1] / 1000);
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color: 0x9aa3ad, transparent: true, opacity: op, depthWrite: false, clippingPlanes: clipPlanes}));
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color: new THREE.Color(g.layer === undefined ? '#9aa3ad' : (L.c || '#9aa3ad')), transparent: true, opacity: op, depthWrite: false, clippingPlanes: clipPlanes}));
+    m.userData.gl = gl;
     m.position.copy(W(g.c[0], g.c[1], g.c[2]));
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color: 0x6f7a85, transparent: true, opacity: 0.6, clippingPlanes: clipPlanes}));
     m.add(e); m.userData.ghost = g; scene.add(m); ghostObjs.push(m);
@@ -310,13 +319,31 @@ function renderInfo(){
     el.querySelector('.mark').textContent = name;
   }
 }
+const _ta = new THREE.Vector3(), _tb = new THREE.Vector3(), _tc = new THREE.Vector3(), _tp = new THREE.Vector3();
+function rayParts(ray, far, opMin, any){
+  /* nearest visible part hit by the ray: bounding box per part first, then that part's triangles.
+     far = stop distance, opMin = ignore layers more transparent than this, any = return at the first hit. */
+  let best = null, bd = far ?? Infinity;
+  for (const p of parts){
+    if (!visible(p.i) || (S.layerOp[p.layer] ?? 1) < opMin) continue;
+    if (!ray.intersectBox(p.box, _tp) || _tp.distanceTo(ray.origin) > bd && !p.box.containsPoint(ray.origin)) continue;
+    const a = p.pos;
+    for (let k = 0; k < a.length; k += 9){
+      _ta.set(a[k], a[k + 1], a[k + 2]); _tb.set(a[k + 3], a[k + 4], a[k + 5]); _tc.set(a[k + 6], a[k + 7], a[k + 8]);
+      if (!ray.intersectTriangle(_ta, _tb, _tc, false, _tp)) continue;
+      const d = _tp.distanceTo(ray.origin);
+      if (d >= bd || d < 1e-6 || !keptByCut(_tp)) continue;
+      bd = d; best = {i: p.i, point: _tp.clone(), dist: d, distance: d};
+      if (any) return best;
+    }
+  }
+  return best;
+}
 function pickAt(cx, cy){
   const r = renderer.domElement.getBoundingClientRect();
   const v = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(v, camera);
-  const hits = raycaster.intersectObjects(layerMeshes.filter(m => m && m.visible && (S.layerOp[m.userData.li] ?? 1) > 0.02), false);
-  for (const h of hits){ if (!keptByCut(h.point)) continue; return {i: h.object.userData.tri[h.faceIndex], point: h.point, dist: h.distance}; }
-  return null;
+  return rayParts(raycaster.ray, Infinity, 0.02, false);
 }
 function keptByCut(p){ for (const pl of clipPlanes) if (pl.distanceToPoint(p) < -1e-4) return false; return true; }
 
@@ -344,7 +371,7 @@ function buildPanel(){
     row.querySelector('.nm').onclick = tg; row.querySelector('.sw').onclick = tg;
     row.querySelector('input[type=checkbox]').onchange = e => { pushUndo(); if (e.target.checked) S.layerOff.delete(li); else S.layerOff.add(li); applyVis(); };
     row.querySelector('input[type=range]').oninput = e => { const v = +e.target.value / 100; S.layerOp[li] = v; $('opv' + li).textContent = e.target.value + '%';
-      if (l.k === 'ghost'){ for (const o of ghostObjs) o.material.opacity = v; } else { const m = layerMeshes[li]; if (m){ m.material.opacity = v; m.material.transparent = v < 1; m.material.depthWrite = v >= 0.5; m.material.needsUpdate = true; layerEdges[li].material.opacity = 0.18 * v; } } occCache.key = ''; };
+      if (l.k === 'ghost'){ for (const o of ghostObjs) if (o.userData.gl === li) o.material.opacity = v; } else { const m = layerMeshes[li]; if (m){ m.material.opacity = v; m.material.transparent = v < 1; m.material.depthWrite = v >= 0.5; m.material.needsUpdate = true; layerEdges[li].material.opacity = 0.18 * v; } } occCache.key = ''; };
     L.appendChild(row);
   });
   const T = $('towers'); T.innerHTML = '';
@@ -360,7 +387,7 @@ function syncChecks(){
   D.layers.forEach((l, li) => { const c = $('lay' + li); if (c) c.checked = !S.layerOff.has(li); });
   D.units.forEach((u, ui) => { const c = $('tw' + ui); if (c) c.checked = !S.towerOff.has(ui); });
 }
-function updateCounts(){ D.layers.forEach((l, li) => { const c = $('ct' + li); if (!c) return; c.textContent = l.k === 'ghost' ? D.ghosts.length : parts.filter(p => p.layer === li && visible(p.i)).length; }); }
+function updateCounts(){ D.layers.forEach((l, li) => { const c = $('ct' + li); if (!c) return; c.textContent = l.k === 'ghost' ? ghostObjs.filter(o => o.userData.gl === li).length : parts.filter(p => p.layer === li && visible(p.i)).length; }); }
 
 /* ---------------- search ---------------- */
 function doSearch(){
@@ -407,11 +434,13 @@ function onWheel(e){
   const r = renderer.domElement.getBoundingClientRect();
   const v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(v, camera);
-  const hits = raycaster.intersectObjects(layerMeshes.filter(m => m && m.visible), false).filter(h => keptByCut(h.point));
+  const h0 = rayParts(raycaster.ray, Infinity, 0, false), hits = h0 ? [h0] : [];
   const dirRay = raycaster.ray.direction.clone();
   const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
   let D0 = hits.length ? hits[0].distance : camera.position.distanceTo(controls.target);
-  const minStep = Math.max(diag * 0.0015, 0.03);
+  /* a notch never shrinks below minStep, so the camera keeps moving (and passes through a face) however close it is;
+     the orbit / pan centre never comes closer than minTarget, so drag and pan do not crawl after zooming in */
+  const minStep = Math.max(diag * 0.006, 0.15), minTarget = Math.max(diag * 0.02, 1.5);
   const sgn = e.deltaY < 0 ? 1 : -1;
   const notches = Math.min(4, Math.max(1, Math.round(Math.abs(e.deltaY) / 100)));
   for (let n = 0; n < notches; n++){
@@ -420,7 +449,7 @@ function onWheel(e){
     D0 = Math.max(D0 - step, minStep);
   }
   const hitP = hits.length ? hits[0].point : camera.position.clone().addScaledVector(dirRay, D0);
-  const depth = Math.max(fwd.dot(new THREE.Vector3().subVectors(hitP, camera.position)), minStep);
+  const depth = Math.max(fwd.dot(new THREE.Vector3().subVectors(hitP, camera.position)), minTarget);
   controls.target.copy(camera.position).addScaledVector(fwd, depth);
   controls.update();
 }
@@ -431,7 +460,8 @@ function buildGrid(){
   gridGroup = new THREE.Group(); scene.add(gridGroup);
   const z = C0[2], mat = new THREE.LineDashedMaterial({color: new THREE.Color(css('--grid') || '#a8562e'), dashSize: 0.6, gapSize: 0.25, transparent: true, opacity: 0.85});
   const xs = D.gx, ys = D.gy;
-  const xmin = -17500, xmax = 53500, ymin = -15500, ymax = 14500;
+  const gxs = xs.map(g => g[1]), gys = ys.map(g => g[1]), ext = D._ext, pad = 1500;     // grid lines run past the outer grids and the model
+  const xmin = Math.min(ext.lo[0], ...gxs) - pad, xmax = Math.max(ext.hi[0], ...gxs) + pad, ymin = Math.min(ext.lo[1], ...gys) - pad, ymax = Math.max(ext.hi[1], ...gys) + pad;
   const line = (a, b) => { const g = new THREE.BufferGeometry().setFromPoints([a, b]); const l = new THREE.Line(g, mat); l.computeLineDistances(); gridGroup.add(l); };
   for (const [n, x] of xs){ line(W(x, ymin, z), W(x, ymax, z)); gridLabels.push({el: mkLbl('gbub', n), p: W(x, ymin - 900, z), pri: 0, kind: 'b'}); gridLabels.push({el: mkLbl('gbub', n), p: W(x, ymax + 900, z), pri: 0, kind: 'b'}); }
   for (const [n, y] of ys){ line(W(xmin, y, z), W(xmax, y, z)); gridLabels.push({el: mkLbl('gbub', n), p: W(xmin - 900, y, z), pri: 0, kind: 'b'}); gridLabels.push({el: mkLbl('gbub', n), p: W(xmax + 900, y, z), pri: 0, kind: 'b'}); }
@@ -451,17 +481,28 @@ function buildGrid(){
 }
 function occluded(p){
   const dir = new THREE.Vector3().subVectors(p, camera.position); const L = dir.length(); dir.normalize();
-  raycaster.set(camera.position, dir); raycaster.far = L - 0.02;
-  const ms = layerMeshes.filter((m, li) => m && m.visible && (S.layerOp[li] ?? 1) >= 0.5);
-  const hits = raycaster.intersectObjects(ms, false);
-  raycaster.far = Infinity;
-  return hits.some(h => keptByCut(h.point));
+  raycaster.set(camera.position, dir);
+  return !!rayParts(raycaster.ray, L - 0.02, 0.5, true);
+}
+const lblState = {key: '', moved: 0, dirty: true};
+function setLbl(o, x, y, show){
+  /* position by transform and remember the state: no style write and no layout read when nothing changed */
+  const el = o.el;
+  if (!show){ if (o.shown !== false){ el.style.display = 'none'; o.shown = false; } return; }
+  if (o.shown !== true){ el.style.display = ''; o.shown = true; }
+  const t = `translate(${Math.round(x)}px,${Math.round(y)}px) translate(-50%,-50%)`;
+  if (o.tf !== t){ el.style.transform = t; o.tf = t; }
 }
 function placeLabels(){
-  const r = renderer.domElement.getBoundingClientRect();
-  const key = camera.matrixWorld.elements.map(v => v.toFixed(4)).join(',') + clipPlanes.length + (clipPlanes[0] ? clipPlanes[0].constant.toFixed(3) : '');
-  const recompute = key !== occCache.key && (!occCache.t || performance.now() - occCache.t > 120);
-  if (recompute){ occCache.key = key; occCache.t = performance.now(); occCache.vis = {}; }
+  const r = lblState.rect || (lblState.rect = renderer.domElement.getBoundingClientRect());
+  const key = camera.matrixWorld.elements.map(v => v.toFixed(4)).join(',') + '|' + camera.fov + '|' + r.width + 'x' + r.height + '|' + S.grid + S.labels + [...S.towerOff].join('.') + '|' + S.meas.length + (S.pendingObj ? 'p' : '') + '|' + clipPlanes.length + (clipPlanes[0] ? clipPlanes[0].constant.toFixed(3) : '');
+  const now = performance.now();
+  if (key !== lblState.key){ lblState.key = key; lblState.moved = now; lblState.dirty = true; }
+  else if (!lblState.dirty && occCache.key === key) return;                       // nothing moved: skip the whole pass
+  /* hidden-behind-steel test costs a ray per label: only once the camera has rested, never while it moves */
+  const recompute = occCache.key !== key && now - lblState.moved > 140;
+  if (recompute){ occCache.key = key; occCache.vis = {}; }
+  lblState.dirty = false;
   const placed = [];
   const proj = (p) => { const v = p.clone().project(camera); return {x: (v.x + 1) / 2 * r.width, y: (1 - v.y) / 2 * r.height, ok: v.z < 1 && v.z > -1}; };
   const all = [];
@@ -469,18 +510,18 @@ function placeLabels(){
   towerTags.forEach((t, k) => all.push({o: t, id: 't' + k, show: S.labels && !S.towerOff.has(t.ui), pri: -1}));
   all.sort((a, b) => (a.o.pri ?? a.pri ?? 0) - (b.o.pri ?? b.pri ?? 0));
   for (const a of all){
-    const el = a.o.el;
-    if (!a.show){ el.hidden = true; continue; }
-    const s = proj(a.o.p);
-    if (!s.ok || s.x < -40 || s.y < -40 || s.x > r.width + 40 || s.y > r.height + 40){ el.hidden = true; continue; }
-    if (recompute && a.o.kind !== undefined) occCache.vis[a.id] = !occluded(a.o.p);
-    if (a.o.kind !== undefined && occCache.vis[a.id] === false){ el.hidden = true; continue; }
-    el.hidden = false; el.style.left = s.x + 'px'; el.style.top = s.y + 'px';
-    const w = el.offsetWidth, h = el.offsetHeight, box = [s.x - w / 2, s.y - h / 2, s.x + w / 2, s.y + h / 2];
-    if (placed.some(q => box[0] < q[2] && q[0] < box[2] && box[1] < q[3] && q[1] < box[3])){ el.hidden = true; continue; }
-    placed.push(box);
+    const o = a.o;
+    if (!a.show){ setLbl(o, 0, 0, false); continue; }
+    const s = proj(o.p);
+    if (!s.ok || s.x < -40 || s.y < -40 || s.x > r.width + 40 || s.y > r.height + 40){ setLbl(o, 0, 0, false); continue; }
+    if (recompute && o.kind !== undefined) occCache.vis[a.id] = !occluded(o.p);
+    if (o.kind !== undefined && occCache.vis[a.id] === false){ setLbl(o, 0, 0, false); continue; }
+    if (o.w === undefined){ setLbl(o, s.x, s.y, true); o.w = o.el.offsetWidth; o.h = o.el.offsetHeight; }   // measured once per label
+    const box = [s.x - o.w / 2, s.y - o.h / 2, s.x + o.w / 2, s.y + o.h / 2];
+    if (placed.some(q => box[0] < q[2] && q[0] < box[2] && box[1] < q[3] && q[1] < box[3])){ setLbl(o, 0, 0, false); continue; }
+    setLbl(o, s.x, s.y, true); placed.push(box);
   }
-  for (const m of S.meas){ const s = proj(m.mid); m.el.hidden = !S.labels || !s.ok; m.el.style.left = s.x + 'px'; m.el.style.top = s.y + 'px'; m.obj.visible = S.labels; }
+  for (const m of S.meas){ const s = proj(m.mid); setLbl(m, s.x, s.y, S.labels && s.ok); m.obj.visible = S.labels; }
   if (S.pendingObj) S.pendingObj.visible = S.labels;
 }
 
@@ -508,9 +549,8 @@ function setMeasure(on){ S.measure = on; $('bMeas').classList.toggle('on', on); 
 function clearPending(){ S.pending = null; rubber.visible = false; guideLine.visible = false; if (S.pendingObj){ scene.remove(S.pendingObj); S.pendingObj = null; } }
 function los(pt){
   const dir = new THREE.Vector3().subVectors(pt, camera.position); const L = dir.length(); dir.normalize();
-  raycaster.set(camera.position, dir); raycaster.far = L - 0.0015;
-  const hits = raycaster.intersectObjects(layerMeshes.filter(m => m && m.visible && (S.layerOp[m.userData.li] ?? 1) >= 0.5), false); raycaster.far = Infinity;
-  return !hits.some(h => keptByCut(h.point));
+  raycaster.set(camera.position, dir);
+  return !rayParts(raycaster.ray, L - 0.0015, 0.5, true);
 }
 function snapAt(cx, cy){
   const r = renderer.domElement.getBoundingClientRect(), mx = cx - r.left, my = cy - r.top;
@@ -660,14 +700,15 @@ async function main(){
   controls.enableZoom = false; controls.screenSpacePanning = true; controls.enableDamping = true; controls.dampingFactor = 0.12;
   controls.mouseButtons = {LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN};
   const all = new THREE.Box3(); for (const p of parts) all.union(p.box); diag = all.getSize(new THREE.Vector3()).length();
+  D.layers.forEach((l, li) => { if (l.off) S.layerOff.add(li); });      // layers hidden when the page opens (bondek package)
   buildGhosts(); buildLayers(); buildPanel(); fillCard(); buildGrid(); setupMeasure();
-  const resize = () => { const r = view.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix(); occCache.key = ''; };
+  const resize = () => { const r = view.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix(); occCache.key = ''; lblState.rect = null; lblState.key = ''; };
   new ResizeObserver(resize).observe(view); resize();
   camera.position.set(0, 20, 60); controls.target.set(0, 5, 0); preset('iso'); if (fly){ camera.position.copy(fly.p1); controls.target.copy(fly.t1); fly = null; } controls.update();
   view.addEventListener('wheel', onWheel, {passive: false, capture: true});
   // pointer: click select / measure
   let down = null;
-  renderer.domElement.addEventListener('pointerdown', e => { down = {x: e.clientX, y: e.clientY, b: e.button}; });
+  renderer.domElement.addEventListener('pointerdown', e => { down = {x: e.clientX, y: e.clientY, b: e.button}; fly = null; });   // a drag always wins over a fly-to
   renderer.domElement.addEventListener('pointermove', e => {
     if (!S.measure) return;
     const sn = snapAt(e.clientX, e.clientY);
@@ -708,10 +749,11 @@ async function main(){
   const setLabels = on => { S.labels = on; $('cLabels').checked = on; $('bLab').classList.toggle('on', on); };
   $('cLabels').onchange = e => setLabels(e.target.checked);
   $('bLab').onclick = () => setLabels(!S.labels);
-  $('cutOn').onclick = () => { S.cut = {dir: $('cutDir').value, pos: +$('cutPos').value}; applyCut(); };
-  $('cutOff').onclick = () => { S.cut = null; applyCut(); };
-  $('cutDir').onchange = () => { if (S.cut){ S.cut.dir = $('cutDir').value; applyCut(); } };
-  $('cutPos').oninput = () => { if (!S.cut) S.cut = {dir: $('cutDir').value, pos: 500}; S.cut.pos = +$('cutPos').value; applyCut(); };
+  const cutUI = () => $('cutOn').classList.toggle('on', !!S.cut);
+  $('cutOn').onclick = () => { S.cut = {dir: S.cutDir, pos: +$('cutPos').value}; applyCut(); cutUI(); };
+  $('cutOff').onclick = () => { S.cut = null; applyCut(); cutUI(); };
+  for (const b of $('cutDirs').children) b.onclick = () => { S.cutDir = b.dataset.d; for (const o of $('cutDirs').children) o.classList.toggle('on', o === b); if (S.cut){ S.cut.dir = S.cutDir; applyCut(); } };
+  $('cutPos').oninput = () => { if (!S.cut) S.cut = {dir: S.cutDir, pos: 500}; S.cut.pos = +$('cutPos').value; applyCut(); cutUI(); };
   window.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z'){ e.preventDefault(); if (S.measure) undoMeasure(); else undo(); return; }
@@ -720,7 +762,7 @@ async function main(){
     else if (e.key === 'Escape'){ if (S.measure){ if (S.pending) clearPending(); else setMeasure(false); } else select([], [], 0); }
   });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (selMesh) selMesh.material.color.set(css('--sel')); });
-  document.fonts && document.fonts.ready.then(() => { occCache.key = ''; });
+  document.fonts && document.fonts.ready.then(() => { occCache.key = ''; lblState.key = ''; for (const o of gridLabels.concat(towerTags)) o.w = undefined; });
   // loop
   const loop = () => {
     requestAnimationFrame(loop);

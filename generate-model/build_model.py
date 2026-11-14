@@ -37,6 +37,17 @@ def validate(d):
     if len(d["units"]) != len(d["unitKeys"]):
         errs.append(f"units ({len(d['units'])}) and unitKeys ({len(d['unitKeys'])}) differ in length")
     n_layer, n_unit, n_group = len(d["layers"]), len(d["units"]), len(d["groups"])
+    ghost_layers = {i for i, l in enumerate(d["layers"]) if l.get("k") == "ghost"}
+    for i, g in enumerate(d["ghosts"]):
+        if "layer" in g and g["layer"] not in ghost_layers:
+            errs.append(f"ghost[{i}]: layer {g['layer']} is not a ghost layer (k='ghost')")
+    if d["ghosts"] and not ghost_layers:
+        errs.append("ghosts present but no layer with k='ghost'")
+    bdk = {p["layer"] for p in d["parts"] if (p.get("mto") or {}).get("kind") == "measure" and p.get("t", "")[:2] in ("BD", "SS", "EF")}
+    if len(bdk) > 1:
+        errs.append(f"bondek, studs and edgeform must share ONE layer (found layers {sorted(bdk)})")
+    errs += [f"layer {li} ({d['layers'][li]['n']}): the bondek package layer must be hidden by default (off: true)"
+             for li in bdk if 0 <= li < n_layer and not d["layers"][li].get("off")]
     covered = {li for c in d["cats"] for li in c["layers"]}
     for i, p in enumerate(d["parts"]):
         tag = f"part[{i}] {p.get('t', '?')}"
@@ -55,7 +66,10 @@ def validate(d):
                 errs.append(f"{tag}: group index {g}={p[g]} out of range")
         if p["sub"] != -1 and not 0 <= p["sub"] < n_group:
             errs.append(f"{tag}: sub={p['sub']} out of range")
-        if p["plate"] is None and p["prof"] not in d["profs"]:
+        if d["layers"][p["layer"]].get("k") == "ghost" if 0 <= p["layer"] < n_layer else False:
+            errs.append(f"{tag}: steel part on a ghost layer")
+        measured = (p.get("mto") or {}).get("kind") == "measure"       # bondek package: counted, no unit weight needed
+        if p["plate"] is None and not measured and p["prof"] not in d["profs"]:
             errs.append(f"{tag}: section '{p['prof']}' not in profs (no unit weight)")
         if not p["pr"]:
             errs.append(f"{tag}: no geometry")

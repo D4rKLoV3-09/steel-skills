@@ -12,7 +12,7 @@ short and actionable. When a choice is genuinely Yang's, give 2-3 options instea
 - `jobs/<job>/`: Yang's drawings for a job (not uploaded to GitHub). Write results to `jobs/<job>/out/`.
 
 ## Job routine
-1. Read every drawing in `jobs/<job>/`. Ask only what blocks the work; otherwise decide, label it, go on.
+1. Read every drawing in `jobs/<job>/` with the readers, not by eye (PC: `generate-model/read_drawing.py`; claude.ai cloud session: `drawings/read_drawings.py` + `drawings/crop.py`), and record the reading in `jobs/<job>/out/read/reading.json` so nobody reads the same sheet twice. Ask only what blocks the work; otherwise decide, label it, go on.
 2. Model asked: `python models/<name>/build.py` (spec -> `geometry.py` -> data -> checks -> `build_model.py` -> page). New job: copy the scripts of the closest existing model (floor plans: `models/sjii/`) and change the numbers; never write a reader or a viewer again.
 3. MTO asked: from a model, `build.py` already makes it (`generate-mto/page_mtospec.js` -> `build_mto.py`, no agent). Without a model (rows from drawings, IFC / Tekla report, previous MTO): the **generate-mto** agent.
 4. Reply: result and file links first, then only what failed or needs Yang now, plus one line of hints (e.g. how many Cautious joints). The lists go into the MTO Summary and the model Notes in this order, not into the reply: **Cautious**, **Left out** (or "Nothing left out."), **Decisions for you**, **Assumptions to confirm**. No check results unless a check failed or was not run.
@@ -23,7 +23,9 @@ short and actionable. When a choice is genuinely Yang's, give 2-3 options instea
 - Unit weights, sizes and m2/m only from the Consteel 2025 catalogue (`generate-mto/references/consteel_catalogue.md`, grep it).
 - A steel grade Claude assumes = `*S275`.
 - Bondek is Yang's scope and always comes with shear studs and edgeform; a slab on his steel = bondek even if not drawn (defaults: Bondek II 1.0 BMT, studs 19x100 @ 300, edgeform 1.2 BMT, ASSUMED). In the MTO its own category in m2 / pcs / m, outside the steel tonnage.
-- Every MTO carries painting m2, handrail m run + kg/m run, grating m2, bondek m2, edgeform m run.
+- Every MTO carries painting m2 and, only where the drawings show them, handrail m run + kg/m run, grating m2, bondek m2, edgeform m run. Nothing is shown for an item that is not on the drawings.
+- Bondek, shear studs and edgeform: one layer, hidden by default, always the standard models in `geometry.py`.
+- Buildings: every floor level is one group labelled "Level". Overall structure on the drawings (RC, facade, others) = ghost, one ghost layer per kind.
 - Selecting a handrail assembly in a model shows its kg/m run.
 - Ghost structures: ask before putting them into an IFC.
 - Erection sequence on a model: never edit the original; copy it as "<title> with-sequence".

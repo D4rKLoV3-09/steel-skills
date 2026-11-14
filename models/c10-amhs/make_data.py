@@ -76,9 +76,10 @@ TAG_FIX = {"bdk": "BDK1", "ss": "SS1", "ef": "EF1"}
 LAYERS = [("col", "Support columns (SC)", "#4f7cac"), ("chord", "Truss chords (TC / BC)", "#c9822b"),
           ("web", "Truss verticals + diagonals", "#b04a5a"), ("l2", "Level 2 floor beams (1HSB / 1VSB)", "#7b68b5"),
           ("l3", "Level 3 support beams (2HSB / 2VSB)", "#8a6d3b"), ("br", "Plan bracing (1BR / 2BR)", "#2f9fb3"),
-          ("pr", "Roof purlins", "#6b8e23"), ("bdk", "Bondek deck", "#a7b3bf"), ("ss", "Shear studs", "#d4a017"),
-          ("ef", "Edgeform", "#5d7385"), ("ghost", "Ghost (RC piers, by others)", "#9aa3ad")]
+          ("pr", "Roof purlins", "#6b8e23"), ("bdk", "Bondek package (deck, studs, edgeform)", "#a7b3bf"),
+          ("ghost", "Ghost (RC piers, by others)", "#9aa3ad")]
 LI = {k: i for i, (k, _, _) in enumerate(LAYERS)}
+LI["ss"] = LI["ef"] = LI["bdk"]          # Yang: bondek, studs and edgeform share one layer, hidden when the page opens
 DWG = "XXXX-LAY-LA1-00-SSTEL-001 / XXXX-SEC-LA1-00-SSTEL-001 Rev D"
 CATS = [("A", "TRUSS CHORDS - TOP / BOTTOM (TC / BC)", ["chord"], "LAY-001 plans 1-2; SEC-001 section 1-1"),
         ("B", "TRUSS VERTICALS AND DIAGONALS (VR / DG)", ["web"], "SEC-001 section 1-1"),
@@ -222,7 +223,7 @@ data = {
                "description": "STRUCTURAL STEEL - TRUSSES, SUPPORT COLUMNS, FLOOR + SUPPORT-LEVEL BEAMS, BRACING, ROOF PURLINS, BONDEK PACKAGE (from 3D model)",
                "contractor": "", "date": "12-11-2026"},
     "parts": out, "groups": groups,
-    "layers": [{"k": k, "n": n, "c": c} for k, n, c in LAYERS],
+    "layers": [dict({"k": k, "n": n, "c": c}, **({"off": True} if k == "bdk" else {})) for k, n, c in LAYERS],
     "units": [n for _, n in UNITS], "unitKeys": [k for k, _ in UNITS],
     "ghosts": ghosts, "gx": [["LA1", 0], ["LA2", 18000], ["LA3", 49200], ["LA4", 62700]], "gy": [["LAB", 0], ["LAA", 9600]],
     "profs": profs, "cats": cats,
