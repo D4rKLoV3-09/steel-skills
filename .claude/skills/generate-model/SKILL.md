@@ -11,6 +11,7 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 - In Claude Code you are already in the repo (`CLAUDE.md` says where things are). In a claude.ai cloud session: attach the repo (`add_repo` owner `D4rKLoV3-09`, repo `steel-skills`) and clone it. `npm install` in its root before the browser tests.
 - Drawings come from `jobs/<job>/`; results go to `jobs/<job>/out/`; a model's data lives in `models/<name>/`. In Claude Code the page is the HTML file (open it in a browser); in a claude.ai session it is also published as an Artifact.
 - Files: `viewer_template.html` (fixed UI), `geometry.py` (spec -> zero-gap prisms), `build_model.py` (data -> page, validates), `tests/` (regress, rules_check, ui_check, retag_check, ub42_from_old). Read a script's docstring, not the whole file, unless changing it.
+- Drawing readers (shared with generate-mto): `drawings/read_drawings.py` (PDF -> text index + thumbnails) and `drawings/crop.py` (one view or one mark as an image); section 1.
 - The MTO builder for "the MTO" is `generate-mto/build_mto.py` in the same repo.
 
 ## 0. Standing rules and ask-first
@@ -24,6 +25,9 @@ One self-contained three.js page per model, published as an Artifact (same URL f
 - **Sequence mode:** only when Yang asks (section 6b).
 
 ## 1. Reading drawings
+- **Index first, look second.** Run `python drawings/read_drawings.py jobs/<job> --out jobs/<job>/out/read` and read `index.md`: per sheet the title block (dwg no, rev, status), then every view with its scale, grids, member marks, section sizes, levels and dimensions, plus legends and notes, as text (about 1 k tokens per A1 sheet). Look at each sheet's thumbnail once for the arrangement, then only at crops: `python drawings/crop.py jobs/<job>/out/read --view <id>` (or `--find <mark>`, `--box`, `--part tl` for more detail). Never rasterise a whole sheet at high dpi and never dump `pdftotext -layout` (mostly spaces).
+- The index is text, not geometry: confirm on a crop which member each mark and dimension belongs to. Repeated views that read the same in the index (same marks, same dimensions): crop one and check the others against it from the index. A sheet flagged `scan_or_outlined_text` has no real text: thumbnail and crops only. A dimension measured from a crop (the script prints mm per pixel) is "scaled off the drawing" and labelled so.
+- **Write the reading down** in `jobs/<job>/out/read/reading.json`: sheets read (dwg no, rev, status), grids, levels per tower or frame, members (`ref`, section, qty, view, sheet), assumptions, left out, open questions. Revisions, the MTO agent and the other skills start from this file and re-open a drawing only for what it does not answer. New drawing revision: rerun with `--prev <old sheets.json>` and re-read only the sheets marked new or changed.
 - Read every sheet incl. later revisions (a rev02 "for reference" sheet overrides older levels). State which sheet each tower or frame came from.
 - Each tower or frame has its own levels; never copy one elevation onto all. No elevation: say so and state the assumption.
 - Members drawn as separate pieces stay separate pieces at their own levels.

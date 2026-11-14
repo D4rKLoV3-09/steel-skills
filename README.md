@@ -6,7 +6,7 @@ the code lives here so it is not re-read on every call. Line endings are CRLF (k
 ## Setup in a session
     git clone <this repo> && cd steel-skills
     npm install            # three 0.128.0 + exceljs 4.4.0, only for the browser tests
-    pip install --break-system-packages numpy openpyxl playwright   # if missing
+    pip install --break-system-packages numpy openpyxl playwright pdfplumber opencv-python-headless   # if missing
 
 ## generate-model
 | File | Job |
@@ -20,6 +20,12 @@ the code lives here so it is not re-read on every call. Line endings are CRLF (k
 | tests/rules_check.py | standing rules in the browser: handrail kg/m, dual-tag search, grating / bondek MTO rows. |
 | tests/mto_parity.py | page export vs build_mto.py, cell by cell + LibreOffice recalc. |
 | tests/fixtures/ub4.data.json | UB4 model data (1,662 parts, 76,650.7 kg): the regression baseline. |
+
+## drawings (shared by both skills)
+| File | Job |
+|---|---|
+| read_drawings.py | Vector PDFs -> `index.md` (title block, views, marks, sizes, levels, dims as text), `sheets.json` (with coordinates), thumbnails. `--prev` marks changed sheets. Needs pdfplumber, opencv, poppler. |
+| crop.py | One view (`--view`), one mark (`--find`) or one box as a PNG capped at 1400 px; prints mm per pixel for scaled views. |
 
 ## generate-mto
 | File | Job |

@@ -11,7 +11,7 @@ short and actionable. When a choice is genuinely Yang's, give 2-3 options instea
 - `jobs/<job>/`: Yang's drawings for a job (not uploaded to GitHub). Write results to `jobs/<job>/out/`.
 
 ## Job routine
-1. Read every drawing in `jobs/<job>/`. Ask only what blocks the work; otherwise decide, label it, go on.
+1. Read every drawing in `jobs/<job>/`: text index first (`drawings/read_drawings.py`), then crops (`drawings/crop.py`), and record the reading in `jobs/<job>/out/read/reading.json` so nobody reads the same sheet twice. Ask only what blocks the work; otherwise decide, label it, go on.
 2. Model asked: spec.json -> `geometry.py` -> data.json -> `build_model.py` -> `jobs/<job>/out/<name>.html`; run the skill's checks; keep the data in `models/<name>/`.
 3. MTO asked (or "model + MTO"): hand the spec (the model page's `mtoSpec`, or rows read from the drawings) to the **generate-mto** agent; it returns `jobs/<job>/out/<Project>_MTO.xlsx` and a report.
 4. Reply: result first, then **Decisions for you**, **Assumptions to confirm**, **Left out** (or "Nothing left out.").
