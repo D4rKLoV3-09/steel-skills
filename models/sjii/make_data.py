@@ -185,7 +185,11 @@ for m, q in zip(M, out):
 from sections import SCHED  # noqa: E402
 grp = {}
 for c in extra["cautions"]:
-    grp.setdefault((c["bldg"], c["k"], (c["mark"], c.get("fam")), (c["on"], c.get("on_fam"))), []).append(c)
+    a_, b_ = (c["mark"], c.get("fam")), (c["on"], c.get("on_fam"))
+    if c["k"] == "butt" and str(b_) < str(a_):          # a butt joint is seen from both members: one line per pair, not two
+        a_, b_ = b_, a_
+    grp.setdefault((c["bldg"], c["k"], a_, b_), []).append(c)
+njoint = lambda k, cs: len(cs) if k != "butt" else max(len({c["id"] for c in cs if (c["mark"], c.get("fam")) == mk}) for mk in {(c["mark"], c.get("fam")) for c in cs})
 sec = lambda r: f"{tag_of(*r)} (Ref {r[0]}, {SCHED[r[0]]})" if tag_of(*r) else r[0]
 TXT = {"deep": "{a} frames into the shallower {b}", "butt": "{a} butts in line with {b} - different sections",
        "wide": "{a} is wider than its {b}"}
@@ -193,7 +197,7 @@ cautions = []
 for (b, k, mk, on), cs in sorted(grp.items(), key=lambda kv: (-len(kv[1]), str(kv[0]))):
     lvs = sorted({c["floor"].split("-")[1] for c in cs}, key=list(LVN).index)
     dwg = sorted({re.search(r"S-\d{4}", c["sheet"]).group(0) for c in cs})
-    cautions.append(f"{BLD[b]}: " + TXT[k].format(a=sec(mk), b=sec(on)) + f" - {len(cs)} joint{'s' if len(cs) > 1 else ''} "
+    cautions.append(f"{BLD[b]}: " + TXT[k].format(a=sec(mk), b=sec(on)) + f" - {njoint(k, cs)} joint{'s' if njoint(k, cs) > 1 else ''} "
                     f"on {', '.join(LVN[v] for v in lvs)} ({', '.join(dwg)})")
 CAUT_MAX = 30
 cautions_mto = cautions[:CAUT_MAX] + ([f"+ {len(cautions) - CAUT_MAX} more pairs ({sum(len(v) for v in grp.values()) - sum(len(v) for v in sorted(grp.values(), key=len, reverse=True)[:CAUT_MAX])} joints) - full list in the model Notes; every such member reads CAUTIOUS in its source line"] if len(cautions) > CAUT_MAX else [])
