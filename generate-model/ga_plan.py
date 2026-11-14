@@ -17,6 +17,8 @@ Framing (mm):
 Connection rule (Yang): a plan draws member lines short of each other, but steel never floats. Each end runs along
 its axis to the nearest neighbour within REACH: a column (to its face), a crossing beam (to its axis, coped; at a
 node the deepest line is the host and runs through), or the beam in line with it (butt joint at mid-gap).
+Two lines drawn through each other: the shallower is cut at the crossing. Ends that fan out from one column or
+node are mitred against each other. An end whose support stops short picks its next neighbour.
 Cautious joints: a member deeper than its support, wider than its column, or butting a different section.
 """
 import math
@@ -162,6 +164,17 @@ def arcs(page, region, wmin, wmax):
     return out
 
 
+def smooth(pts, turn=60, short=3):
+    """Chain points without the ones where the line doubles back or steps less than `short` pt (drawing noise)."""
+    out = [pts[0]]
+    for p, q in zip(pts[1:], pts[2:]):
+        v, w = (p[0] - out[-1][0], p[1] - out[-1][1]), (q[0] - p[0], q[1] - p[1])
+        lv, lw = math.hypot(*v), math.hypot(*w)
+        if lv >= short and lw >= short and (v[0] * w[0] + v[1] * w[1]) / (lv * lw) > math.cos(math.radians(turn)):
+            out.append(p)
+    return out + [pts[-1]]
+
+
 def pair(lines, ch, lab, curves, off=9):
     """Each mark picks its nearest parallel line (or curve within 12 pt); each line keeps its nearest mark.
     -> members [{"mark", "pts"}] (2 points = straight, more = curved chords), free [(mark, x, y)], used chain ids."""
@@ -199,9 +212,9 @@ def pair(lines, ch, lab, curves, off=9):
                 continue
             pts = polyline(pcs)
             step = max(1, round(len(pts) / 12))       # about 12 chords per curved member
-            mem.append({"mark": t, "pts": pts[::step] + ([pts[-1]] if (len(pts) - 1) % step else [])})
+            mem.append({"mark": t, "pts": smooth(pts[::step] + ([pts[-1]] if (len(pts) - 1) % step else []))})
         elif k[0] == "c":
-            mem.append({"mark": t, "pts": curves[k[1]]})
+            mem.append({"mark": t, "pts": smooth(curves[k[1]])})
         else:
             free.append((t, k[1], k[2]))
     return mem, free, {k for k in own if isinstance(k, int)}
@@ -311,34 +324,61 @@ def _dims(pf):
 
 
 def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
-    """beams [{id, a, b (plan mm, as drawn), prof, arc, flat (web horizontal: bears, never coped)}], cols [{c, s, round}], lines [(x0, y0, x1, y1)] = drawn lines
-    without a mark (RC wall edge, unmarked member), used only when an end finds no steel and no column.
-    Sets a, b, ends, end_kind per beam (col | beam | host | butt | line | arc | free) and returns
-    (cautions, ids of beams whose host stops short of the joint)."""
+    """beams [{id, a, b (plan mm, as drawn), prof, arc, flat (web horizontal: bears, never coped), through (never
+    split)}], cols [{c, s, round}], lines [(x0, y0, x1, y1)] = drawn lines without a mark (RC wall edge, unmarked
+    member), used only when an end finds no steel and no column.
+    Sets a, b, ends, end_kind per beam (col | beam | host | butt | line | arc | free), appends the second halves of
+    beams split at a crossing (id "<id>.2") and returns (cautions, ids of beams whose support stops short)."""
     S15, S3 = math.sin(math.radians(15)), math.sin(math.radians(3))
-    root = {}
+    key = lambda p: (round(p[0]), round(p[1]))
+    E_ = lambda bm, k: bm["_a"] if k == 0 else bm["_b"]
+    out_ = lambda bm, k: (-bm["_t"][0], -bm["_t"][1]) if k == 0 else bm["_t"]
+
+    def prep(bm):
+        a, b = bm["a"], bm["b"]
+        L = math.dist(a, b)
+        bm["_a"], bm["_b"], bm["_L"], bm["_t"] = list(a), list(b), L, ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+        bm["_d"], bm["_w"] = _dims(profiles[bm["prof"]])[::-1 if bm.get("flat") else 1]      # flat = web horizontal
+        bm["ends"], bm["end_kind"], bm["_at"], bm["_col"], bm["_hx"] = [None, None], ["free", "free"], [None, None], [None, None], [None, None]
+    for bm in beams:
+        prep(bm)
+    # 0. two lines drawn through each other are at one level: the shallower one is cut at the crossing
+    cuts = {}
+    for i, A in enumerate(beams):
+        for B in beams[i + 1:]:
+            cr = A["_t"][0] * B["_t"][1] - A["_t"][1] * B["_t"][0]
+            if abs(cr) < S15 or A.get("arc") or B.get("arc") or (A.get("through") and B.get("through")):
+                continue
+            wx, wy = B["_a"][0] - A["_a"][0], B["_a"][1] - A["_a"][1]
+            sa, sb = (wx * B["_t"][1] - wy * B["_t"][0]) / cr, (wx * A["_t"][1] - wy * A["_t"][0]) / cr
+            if 300 < sa < A["_L"] - 300 and 300 < sb < B["_L"] - 300:
+                weak = B if A.get("through") else A if B.get("through") else min(A, B, key=lambda m: (m["_d"], m is A))
+                cuts.setdefault(weak["id"], []).append(sa if weak is A else sb)
+    for bm in list(beams):
+        if bm["id"] not in cuts:
+            continue
+        base = {k_: v for k_, v in bm.items() if not k_.startswith("_")}
+        pts = [bm["_a"]] + [[round(bm["_a"][0] + bm["_t"][0] * s_, 1), round(bm["_a"][1] + bm["_t"][1] * s_, 1)] for s_ in sorted(cuts[bm["id"]])] + [bm["_b"]]
+        bm["b"] = list(pts[1])
+        prep(bm)
+        for n, (p, q) in enumerate(zip(pts[1:], pts[2:])):
+            beams.append({**base, "id": f"{bm['id']}.{n + 2}", "a": list(p), "b": list(q)})
+            prep(beams[-1])
+    joints = {}
+    for bm in beams:
+        if bm.get("arc"):
+            for e in ("a", "b"):
+                joints.setdefault(key(bm[e]), []).append(bm["id"])
+    joint = lambda bm, k: bool(bm.get("arc")) and len(joints[key(E_(bm, k))]) > 1
+    ends = [(bm, k) for bm in beams for k in (0, 1) if not joint(bm, k)]
+    # 1. the beam in line with each end (same line within 150 mm, its nearer end ahead within 2 x reach)
+    partner, root = {}, {}
 
     def find(i):
         while root.setdefault(i, i) != i:
             root[i] = root[root[i]]
             i = root[i]
         return i
-    key = lambda p: (round(p[0]), round(p[1]))
-    joints = {}
-    for bm in beams:
-        a, b = bm["a"], bm["b"]
-        L = math.dist(a, b)
-        bm["_a"], bm["_b"], bm["_L"], bm["_t"] = list(a), list(b), L, ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
-        bm["_d"], bm["_w"] = _dims(profiles[bm["prof"]])[::-1 if bm.get("flat") else 1]      # flat = web horizontal
-        bm["ends"], bm["end_kind"], bm["_at"] = [None, None], ["free", "free"], [None, None]
-        if bm.get("arc"):
-            for e in ("a", "b"):
-                joints.setdefault(key(bm[e]), []).append(bm["id"])
-    ends = [(bm, k) for bm in beams for k in (0, 1) if not (bm.get("arc") and len(joints[key(bm["ab"[k]])]) > 1)]
-    E_ = lambda bm, k: bm["_a"] if k == 0 else bm["_b"]
-    out_ = lambda bm, k: (-bm["_t"][0], -bm["_t"][1]) if k == 0 else bm["_t"]
-    # 1. the beam in line with each end (same line within 150 mm, its nearer end ahead within 2 x reach)
-    partner = {}
     for bm, k in ends:
         E, o, t = E_(bm, k), out_(bm, k), bm["_t"]
         best = None
@@ -356,10 +396,13 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
             root[find(bm["id"])] = find(best[0]["id"])
     nd = lambda bm, k: max(bm["_d"], partner[(bm["id"], k)][0]["_d"]) if (bm["id"], k) in partner else bm["_d"]
     prio = lambda bm, k: (nd(bm, k), find(bm["id"]))
-    cautions = []
+    cautions, ban = {}, {}
+
     # 2. each end picks its nearest neighbour
-    for bm, k in ends:
+    def pick(bm, k):
         E, o, t, e = E_(bm, k), out_(bm, k), bm["_t"], "ab"[k]
+        bm[e], bm["ends"][k], bm["end_kind"][k], bm["_at"][k], bm["_col"][k], bm["_hx"][k] = list(E), None, "free", None, None, None
+        cautions.pop((bm["id"], k), None)
         pt = partner.get((bm["id"], k))
         lim = pt[2] if pt else 1e9                        # nothing beyond the in-line beam's end counts
         col = None
@@ -369,8 +412,8 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
             r = max(c["s"]) / 2
             if perp > max(r, 250) or not (-r - back <= ahead <= reach + r):
                 continue
-            if c.get("round"):
-                half = math.sqrt(max(0.0, r * r - perp * perp))
+            if c.get("round"):                            # the square end touches the round face, it never cuts into it
+                half = math.sqrt(max(0.0, r * r - max(0.0, perp - bm["_w"] / 2) ** 2))
             else:
                 half = min(c["s"][0] / 2 / abs(o[0]) if abs(o[0]) > 1e-6 else 1e9, c["s"][1] / 2 / abs(o[1]) if abs(o[1]) > 1e-6 else 1e9)
             f = ahead - half
@@ -378,7 +421,7 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
                 col = (f, c)
         crosses = []
         for h in beams:
-            if h is bm:
+            if h is bm or h["id"] in ban.get((bm["id"], k), ()):
                 continue
             ht = h["_t"]
             cr = t[0] * ht[1] - t[1] * ht[0]
@@ -389,16 +432,18 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
             u_ = (wx * t[1] - wy * t[0]) / cr                 # along h
             f = -s_ if k == 0 else s_ - bm["_L"]
             ext = max(0.0, -u_, u_ - h["_L"])                 # how far h's own line must run to get there
-            if -back <= f <= min(reach, lim) and ext <= reach:
+            if ext > 100 and joint(h, 0 if u_ < 0 else 1):    # past a chord joint of a curved beam: the next chord is there
+                continue
+            if -back <= f <= min(reach, lim + 50) and ext <= reach:
                 crosses.append((abs(f) + ext, f, h, u_))
         cross = min(crosses, key=lambda c: c[0], default=None)
         if col and (cross is None or abs(col[0]) <= cross[0]) and col[0] <= lim:
             f, c = col
             bm[e] = [round(E[0] + o[0] * f, 1), round(E[1] + o[1] * f, 1)]
-            bm["end_kind"][k] = "col"
+            bm["end_kind"][k], bm["_col"][k] = "col", c
             if bm["_w"] > min(c["s"]) + 25:
-                cautions.append({"k": "wide", "bm": bm["id"], "col": c})
-            continue
+                cautions[(bm["id"], k)] = {"k": "wide", "bm": bm["id"], "col": c}
+            return
         if cross:
             # every line through this node (within 300 mm of the nearest crossing): the strongest one that runs
             # through or outranks this end is the host; if none does, this line is the one that runs through
@@ -408,28 +453,32 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
                     continue
                 kh = 0 if u_ < h["_L"] / 2 else 1
                 hp = partner.get((h["id"], kh))
-                if hp and max(-u_, u_ - h["_L"]) > hp[2] / 2:           # joint lies past the butt: the in-line beam hosts
+                if hp and max(-u_, u_ - h["_L"]) > hp[2] / 2 and hp[0]["id"] not in ban.get((bm["id"], k), ()):   # past the butt: the in-line beam hosts
                     P = (E[0] + o[0] * f, E[1] + o[1] * f)
                     h, kh = hp[0], hp[1]
                     u_ = (P[0] - h["_a"][0]) * h["_t"][0] + (P[1] - h["_a"][1]) * h["_t"][1]
-                through = 300 < u_ < h["_L"] - 300
+                through = (u_ > 300 or joint(h, 0)) and (u_ < h["_L"] - 300 or joint(h, 1)) and -100 <= u_ <= h["_L"] + 100
                 if through or prio(h, kh) > prio(bm, k):
                     hosts.append(((through, prio(h, kh)), f, h, u_))
             if hosts:
                 _, f, h, u_ = max(hosts, key=lambda c: c[0])
                 bm[e] = [round(E[0] + o[0] * f, 1), round(E[1] + o[1] * f, 1)]
                 both_i = profiles[h["prof"]]["type"] == "I" and profiles[bm["prof"]]["type"] == "I" and not (h.get("flat") or bm.get("flat"))
-                bm["ends"][k] = [{"host": h["id"], "face": "cope" if both_i else "near"}]
+                face = "cope" if both_i else "near"
+                bm["ends"][k] = [{"host": h["id"], "face": face}]
+                for kh in (0, 1):                             # beside a chord joint of a curved beam: kept off the next chord too
+                    if joint(h, kh) and (u_ if kh == 0 else h["_L"] - u_) < bm["_w"] / 2 + 150:
+                        bm["ends"][k] += [{"host": i, "face": face, "sep": True} for i in joints[key(E_(h, kh))] if i != h["id"]]
                 bm["end_kind"][k], bm["_at"][k] = "beam", (h, u_)
                 if bm["_d"] > h["_d"] + 25:
-                    cautions.append({"k": "deep", "bm": bm["id"], "on": h["id"]})
-                continue
+                    cautions[(bm["id"], k)] = {"k": "deep", "bm": bm["id"], "on": h["id"]}
+                return
             if not pt:                                        # this line runs through: square end on the joint
                 f = cross[1]
                 bm[e] = [round(E[0] + o[0] * f, 1), round(E[1] + o[1] * f, 1)]
-                bm["end_kind"][k] = "host"
-                continue
-        if pt:                                                # butt joint with the beam in line, at mid-gap
+                bm["end_kind"][k], bm["_hx"][k] = "host", (cross[2], cross[3])
+                return
+        if pt:                                                # butt joint with the beam in line: one shared plane at mid-gap
             h, kh, f = pt
             Q, oh = E_(h, kh), out_(h, kh)
             M = [(E[0] + Q[0]) / 2, (E[1] + Q[1]) / 2]
@@ -439,8 +488,8 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
             bm["ends"][k] = [{"plane": [n[0] / nl, n[1] / nl, 0, (n[0] * M[0] + n[1] * M[1]) / nl]}]
             bm["end_kind"][k] = "butt"
             if h["prof"] != bm["prof"] and bm["id"] < h["id"]:
-                cautions.append({"k": "butt", "bm": bm["id"], "on": h["id"]})
-            continue
+                cautions[(bm["id"], k)] = {"k": "butt", "bm": bm["id"], "on": h["id"]}
+            return
         best = None                                           # last: a drawn line without a mark
         for q in lines:
             hL = math.dist(q[:2], q[2:])
@@ -457,25 +506,50 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
         if best is not None:
             bm[e] = [round(E[0] + o[0] * best, 1), round(E[1] + o[1] * best, 1)]
             bm["end_kind"][k] = "line"
-    # 3. a host that stops short of a joint on its line runs on to it; what still misses is an open joint
-    opened = []
-    for bm in beams:
-        for k in (0, 1):
-            if not bm["_at"][k]:
-                continue
-            h, u_ = bm["_at"][k]
-            ht = h["_t"]
-            sa = (h["a"][0] - h["_a"][0]) * ht[0] + (h["a"][1] - h["_a"][1]) * ht[1]
-            sb = (h["b"][0] - h["_a"][0]) * ht[0] + (h["b"][1] - h["_a"][1]) * ht[1]
-            kh = 0 if u_ < sa - 20 else 1 if u_ > sb + 20 else None
-            if kh is None or h["end_kind"][kh] == "butt":
-                continue
-            if h["end_kind"][kh] in ("free", "host"):
-                h["ab"[kh]] = [round(h["_a"][0] + ht[0] * u_, 1), round(h["_a"][1] + ht[1] * u_, 1)]
-                h["end_kind"][kh] = "host"
-            else:
-                opened.append(bm["id"])
-    # 4. curved beams: chord joints mitred on the bisector plane (zero gap, no overlap)
+
+    # 3. a host that stops short of a joint on its line runs on to it; an end whose host cannot do that picks again
+    def settle():
+        opened = []
+        for bm in beams:
+            for k in (0, 1):
+                if bm["end_kind"][k] != "host" or not bm["_hx"][k]:
+                    continue
+                h, u_ = bm["_hx"][k]
+                ht = h["_t"]
+                sa = (h["a"][0] - h["_a"][0]) * ht[0] + (h["a"][1] - h["_a"][1]) * ht[1]
+                sb = (h["b"][0] - h["_a"][0]) * ht[0] + (h["b"][1] - h["_a"][1]) * ht[1]
+                if sa + 100 < u_ < sb - 100:
+                    both_i = profiles[h["prof"]]["type"] == "I" and profiles[bm["prof"]]["type"] == "I" and not (h.get("flat") or bm.get("flat"))
+                    bm["ends"][k] = [{"host": h["id"], "face": "cope" if both_i else "near"}]
+                    bm["end_kind"][k], bm["_at"][k], bm["_hx"][k] = "beam", (h, u_), None
+        for bm in beams:
+            for k in (0, 1):
+                if not bm["_at"][k]:
+                    continue
+                h, u_ = bm["_at"][k]
+                ht = h["_t"]
+                sa = (h["a"][0] - h["_a"][0]) * ht[0] + (h["a"][1] - h["_a"][1]) * ht[1]
+                sb = (h["b"][0] - h["_a"][0]) * ht[0] + (h["b"][1] - h["_a"][1]) * ht[1]
+                kh = 0 if u_ < sa - 20 else 1 if u_ > sb + 20 else None
+                if kh is None or h["end_kind"][kh] == "butt":
+                    continue
+                if joint(h, kh):
+                    if (sa - u_ if kh == 0 else u_ - sb) > 100:
+                        opened.append((bm, k, h))
+                elif h["end_kind"][kh] in ("free", "host"):
+                    h["ab"[kh]] = [round(h["_a"][0] + ht[0] * u_, 1), round(h["_a"][1] + ht[1] * u_, 1)]
+                    h["end_kind"][kh] = "host"
+                else:
+                    opened.append((bm, k, h))
+        return opened
+    for bm, k in ends:
+        pick(bm, k)
+    for _ in range(4):
+        for bm, k, h in settle():
+            ban.setdefault((bm["id"], k), set()).add(h["id"])
+            pick(bm, k)
+    opened = [bm["id"] for bm, k, h in settle()]
+    # 4. curved beams: chord joints mitred on the bisector plane (zero gap, no overlap); a sharp kink stays square
     byid = {bm["id"]: bm for bm in beams}
     for J, ids in joints.items():
         if len(ids) < 2:
@@ -491,15 +565,45 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
             t.append(((o[0] - J[0]) / L, (o[1] - J[1]) / L))
         n = (t[0][0] - t[1][0], t[0][1] - t[1][1])
         nl = math.hypot(*n)
-        if nl < 1e-6:
+        if nl < 1e-6 or t[0][0] * t[1][0] + t[0][1] * t[1][1] > -0.5:
             continue
         n = (n[0] / nl, n[1] / nl)
         for bm in (byid[ids[0]], byid[ids[1]]):
             bm["ends"][0 if key(bm["_a"]) == J else 1] = [{"plane": [n[0], n[1], 0, n[0] * J[0] + n[1] * J[1]]}]
+    # 5. ends that fan out from one column or one node (8 to 80 degrees apart), or meet end to end at a kink
+    #    (100 to 172 degrees, one of them not bearing on a beam): mitred on the plane between them
+    tips = [(bm, k, bm["ab"[k]], (-out_(bm, k)[0], -out_(bm, k)[1])) for bm in beams for k in (0, 1)
+            if bm["end_kind"][k] in ("col", "beam", "host", "line", "arc")]
+    tips.sort(key=lambda t_: t_[2][0])
+    for i, (A, ka, pa, ia) in enumerate(tips):
+        for B, kb, pb, ib in tips[i + 1:]:
+            if pb[0] - pa[0] > 1500:
+                break
+            same_col = A["_col"][ka] is not None and A["_col"][ka] is B["_col"][kb]
+            dot = ia[0] * ib[0] + ia[1] * ib[1]
+            kink = -0.99 < dot < -0.17 and not same_col and "beam" not in (A["end_kind"][ka], B["end_kind"][kb]) \
+                and "arc" in (A["end_kind"][ka], B["end_kind"][kb]) and (A["end_kind"][ka], B["end_kind"][kb]) != ("arc", "arc")
+            if A is B or not (same_col or math.dist(pa, pb) < 450) or not (0.17 < dot < 0.99 or kink):
+                continue
+            if any(c.get("host") == B["id"] for c in A["ends"][ka] or []) or any(c.get("host") == A["id"] for c in B["ends"][kb] or []):
+                continue
+            cr = ia[0] * ib[1] - ia[1] * ib[0]
+            s_ = ((pb[0] - pa[0]) * ib[1] - (pb[1] - pa[1]) * ib[0]) / cr
+            X = (pa[0] + ia[0] * s_, pa[1] + ia[1] * s_)        # where the two axes meet
+            if kink:
+                bl = math.hypot(ia[0] - ib[0], ia[1] - ib[1])
+                n = ((ia[0] - ib[0]) / bl, (ia[1] - ib[1]) / bl)
+            else:
+                bl = math.hypot(ia[0] + ib[0], ia[1] + ib[1])
+                n = (-(ia[1] + ib[1]) / bl, (ia[0] + ib[0]) / bl)
+            for M_, k_, p_, i_ in ((A, ka, pa, ia), (B, kb, pb, ib)):
+                if not M_["ends"][k_] and not kink:           # keep the square end where the member stops
+                    M_["ends"][k_] = [{"plane": [-i_[0], -i_[1], 0, -i_[0] * p_[0] - i_[1] * p_[1]]}]
+                M_["ends"][k_] = (M_["ends"][k_] or []) + [{"plane": [n[0], n[1], 0, n[0] * X[0] + n[1] * X[1]]}]
     for bm in beams:
         for kk in [kk for kk in bm if kk.startswith("_")]:
             del bm[kk]
-    return cautions, opened
+    return list(cautions.values()), opened
 
 
 def bondek(fl, members, profiles, floor, tos, slab, span=4600, pitch=300):

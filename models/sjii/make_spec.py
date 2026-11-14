@@ -126,7 +126,7 @@ for (fr, lv), ss in sorted(floors.items()):
             for c in T["tc"]:
                 beams.append({"mark": c["mark"], "a": [round(C[0] + d[0] * c["x0"]), round(C[1] + d[1] * c["x0"])],
                               "b": [round(C[0] + d[0] * c["x1"]), round(C[1] + d[1] * c["x1"])], "arc": False, "bldg": s["bldg"],
-                              "sheet": s["sheet"], "flat": c["flat"], "truss": inst["id"], "tname": t["name"], "tx": [c["x0"], c["x1"]]})
+                              "sheet": s["sheet"], "flat": c["flat"], "through": True, "truss": inst["id"], "tname": t["name"], "tx": [c["x0"], c["x1"]]})
     zb = below(fr, lv)
     z0 = round(zb * 1000 - SLAB) if zb else tos - 4500
     # ---- steel columns at their marks (D40H / SC01), on the nearest drawn outline ----
@@ -181,6 +181,7 @@ for (fr, lv), ss in sorted(floors.items()):
     for inst in insts:
         T, C, d = inst["T"], inst["C"], inst["d"]
         tcs = [m for m in members if m.get("truss") == inst["id"]]
+        byid_m = {m["id"]: m for m in members}
         if not tcs:
             continue
         common = {"layer": "truss", "truss": inst["id"], "tname": inst["name"], "floor": f"{fr}-{lv}", "bldg": inst["bldg"], "tos": tos}
@@ -203,10 +204,15 @@ for (fr, lv), ss in sorted(floors.items()):
         for j, g in enumerate(T["d"]):
             t_, b_ = at(tcs, g["xt"]), at(bcs, g["xb"])
             ends = [[{"host": h["id"], "face": "near"}] + ([{"host": vert[x], "face": "near"}] if x in vert else []) for h, x in ((t_, g["xt"]), (b_, g["xb"]))]
-            for k, x in ((0, g["xt"]), (1, g["xb"])):    # a diagonal at the end of the top chord also bears on what the chord bears on
-                if k == 0:
-                    for e, lim in ((0, x <= t_["tx"][0] + 600), (1, x >= t_["tx"][1] - 600)):
-                        ends[0] += [({"host": c["host"], "face": "near", "sep": True} if "host" in c else c) for c in (t_["ends"][e] or []) if lim]
+            if g["xb"] in vert and not b_["tx"][0] + 600 < g["xb"] < b_["tx"][1] - 600:
+                ends[1][0]["sep"] = True                 # at the very end of the bottom chord the diagonal bears on the vertical, not the chord
+            for e, lim in ((0, g["xt"] <= t_["tx"][0] + 600), (1, g["xt"] >= t_["tx"][1] - 600)):
+                if lim and t_["end_kind"][e] in ("beam", "col"):   # a diagonal at the end of the top chord stops where the chord stops
+                    hm = byid_m.get(t_["ends"][e][0].get("host")) if t_["end_kind"][e] == "beam" else None
+                    hp = profiles[hm["prof"]] if hm else None
+                    off = (hp.get("b", hp.get("d", 0)) / 2 if hp else 0) * (1 if e == 0 else -1)
+                    pe = t_["ab"[e]]
+                    ends[0].append({"plane": [d[0], d[1], 0, d[0] * pe[0] + d[1] * pe[1] + off]})
             for o in T["d"]:                           # two diagonals at one node with no vertical between: mitred on the plane across the truss
                 if o is g:
                     continue
@@ -239,10 +245,13 @@ for (fr, lv), ss in sorted(floors.items()):
 ids = {m["id"] for m in members}
 for m in members:
     m.pop("tx", None)
-    for k in (0, 1):                     # host dropped as too short -> square end
-        if m["ends"][k] and m["ends"][k][0].get("host", m["id"]) not in ids:   # plane cuts have no host
-            m["ends"][k] = None
-            m["end_kind"][k] = "free"
+    for k in (0, 1):                     # a host dropped as too short: its cut goes, an end left with none is square
+        cuts = m["ends"][k] or []
+        keep = [c for c in cuts if c.get("host", m["id"]) in ids]
+        if len(keep) != len(cuts):
+            m["ends"][k] = keep or None
+            if cuts[0] not in keep and "end_kind" in m:
+                m["end_kind"][k] = "free"
 json.dump({"profiles": profiles, "members": members}, open(sys.argv[2], "w", encoding="utf-8"), indent=0)
 json.dump(extra, open(sys.argv[3], "w", encoding="utf-8"), indent=0)
 print(f"{len(members)} members -> {sys.argv[2]}")
