@@ -25,6 +25,15 @@ End at a / b:
                       add "only": "web" | "flanges" | [plate indices] to cut only some plates (copes);
                       plate order: I = +u flange, -u flange, web; SHS = +u, -u, +v, -v walls;
                       LIPC = base, +v side, +v lip, -v side, -v lip
+Bondek package: always the same three standard models, whatever the product, thickness or stud length (only the
+quantity matters; the description carries the spec). Profiles "BONDEK", "SHEAR STUD" and "EDGEFORM" are built in:
+  {"id": "D1", "t": "BDK1", "prof": "BONDEK", "a": [..], "b": [..], "wid": 3000, "desc": "Bondek II 1.0 BMT"}
+        a -> b = centre line of the deck strip along the span, on top of steel; "wid" = covered width  (MTO: m2)
+  {"id": "S1", "t": "SS1", "prof": "SHEAR STUD", "a": [..], "b": [..], "spacing": 300, "desc": "Shear stud 19x100"}
+        a -> b = the beam's top-flange centre line; one stud part every "spacing" (default 300)       (MTO: pcs)
+  {"id": "E1", "t": "EF1", "prof": "EDGEFORM", "a": [..], "b": [..], "desc": "Edgeform 1.2 BMT x 150"}
+        a -> b = slab edge on top of steel                                                             (MTO: m)
+"assumed": true marks the description as ASSUMED in the MTO. The "mto" override is filled in automatically.
 Welded = zero gap: each section plate is clipped by every bearing plane (half-space clip, capped),
 never by moving vertices, so a corner end comes out as a true notch.
 """
@@ -56,7 +65,74 @@ def plates(pf):
                 (-h / 2 + s, h / 2, -b / 2, -b / 2 + s), (h / 2 - s, h / 2, -b / 2 + s, -b / 2 + s + lip)]
     if t == "PL":
         return [(-pf["t"] / 2, pf["t"] / 2, -pf["b"] / 2, pf["b"] / 2)]
+    if t == "DECK":       # standard deck model: 2 mm pan + 30 x 55 ribs at 200 centres, sitting on the a-b line
+        w = pf["b"]
+        n = max(1, int(w // DECK_PITCH))
+        ribs = [(-w / 2 + (w - (n - 1) * DECK_PITCH) / 2 + k * DECK_PITCH) for k in range(n)]
+        return [(0.0, 2.0, -w / 2, w / 2)] + [(2.0, DECK_RIB_H, v - 15.0, v + 15.0) for v in ribs]
+    if t == "EDGE":       # standard edgeform model: 150 upstand + 50 foot, 3 mm
+        return [(0.0, EDGE_H, -1.5, 1.5), (0.0, 3.0, 1.5, 50.0)]
     raise ValueError(f"unknown profile type {t}")
+
+
+DECK_PITCH, DECK_RIB_H, EDGE_H = 200.0, 55.0, 150.0
+STUD = {"shank": 19.0, "head": 32.0, "head_t": 10.0, "len": 100.0}       # one model for every stud (19 x 100 mill cert)
+STD_PROFILES = {"BONDEK": {"type": "DECK", "kgm": 0.0}, "SHEAR STUD": {"type": "STUD", "kgm": 0.0},
+                "EDGEFORM": {"type": "EDGE", "kgm": 0.0}}
+STD_MTO = {"DECK": ("m2", "Deck", "Bondek II 1.0 BMT"), "STUD": ("pcs", "Stud", "Shear stud 19x100"),
+           "EDGE": ("m", "Edge", "Edgeform 1.2 BMT")}
+
+
+def std_mto(m, pf):
+    """Bondek package parts are counted (m2 / pcs / m), not weighed: fill the MTO override from the member."""
+    uom, cat, default = STD_MTO[pf["type"]]
+    desc = m.get("desc") or default
+    mto = {"kind": "measure", "uom": uom, "cat": cat, "desc": f"{desc} ({uom})"}
+    if pf["type"] == "DECK":
+        mto["wid"] = m["wid"]
+    if m.get("assumed"):
+        mto["assumed"] = ["desc"]
+    return dict(mto, **(m.get("mto") or {}))
+
+
+def round_prism(p, z, e1, e2, s0, s1, r, n=12):
+    """Round bar as an n-sided convex prism between s0 and s1 along z. Faces outward."""
+    ring = [(np.cos(2 * np.pi * k / n) * e1 + np.sin(2 * np.pi * k / n) * e2) * r for k in range(n)]
+    bot, top = [p + s0 * z + q for q in ring], [p + s1 * z + q for q in ring]
+    faces = [bot[::-1], top] + [[bot[k], bot[(k + 1) % n], top[(k + 1) % n], top[k]] for k in range(n)]
+    ctr = p + (s0 + s1) / 2 * z
+    out = []
+    for f in faces:
+        nrm = np.cross(f[1] - f[0], f[2] - f[0])
+        out.append(f if nrm @ (np.mean(f, axis=0) - ctr) > 0 else f[::-1])
+    return out
+
+
+def stud_parts(m):
+    """One stud row -> one part per stud, each the standard stud (round shank + round head, as the sample), standing on the a-b line."""
+    a, b = np.asarray(m["a"], float), np.asarray(m["b"], float)
+    L = np.linalg.norm(b - a)
+    sp = float(m.get("spacing", 300))
+    n = max(1, int(L // sp))
+    along = (b - a) / L if L > EPS else np.array([1.0, 0, 0])
+    z = np.array([0, 0, 1.0])
+    side = np.cross(z, along)
+    side = side / np.linalg.norm(side) if np.linalg.norm(side) > 1e-3 else np.array([0, 1.0, 0])
+    fwd = np.cross(side, z)
+    base = {k: v for k, v in m.items() if not k.startswith("_") and k not in ("a", "b", "up", "ends", "rank", "id", "spacing", "assumed", "wid")}
+    out = []
+    for k in range(n):
+        p = a + along * ((L - (n - 1) * sp) / 2 + k * sp)
+        hs, hh = STUD["shank"] / 2, STUD["head"] / 2
+        prisms = [round_prism(p, z, fwd, side, 0.0, STUD["len"] - STUD["head_t"], hs),
+                  round_prism(p, z, fwd, side, STUD["len"] - STUD["head_t"], STUD["len"], hh)]
+        part = dict(base)
+        part.update({"ax": [0.0, 0.0, 1.0], "L": STUD["len"], "kg": 0.0,
+                     "pr": [[[[round(float(c), 1) for c in q] for q in f] for f in pr] for pr in prisms]})
+        part.setdefault("desc", "Shear stud 19x100")
+        part.setdefault("plate", None)
+        out.append(part)
+    return out
 
 
 def half_dims(pf):
@@ -65,6 +141,8 @@ def half_dims(pf):
         return pf["b"] / 2, pf["b"] / 2
     if pf["type"] == "PL":
         return pf["t"] / 2, pf["b"] / 2
+    if pf["type"] in STD_MTO:
+        return DECK_RIB_H / 2, pf.get("b", 50.0) / 2
     return pf["h"] / 2, pf["b"] / 2
 
 
@@ -228,7 +306,7 @@ def build_member(m, by_id, members, profiles):
     V = np.array([p for pr in prisms for f in pr for p in f])
     s = V @ x
     cut_len = float(s.max() - s.min())
-    part = {k: val for k, val in m.items() if not k.startswith("_") and k not in ("a", "b", "up", "ends", "rank", "id")}
+    part = {k: val for k, val in m.items() if not k.startswith("_") and k not in ("a", "b", "up", "ends", "rank", "id", "wid", "spacing", "assumed")}
     part.update({
         "ax": [round(float(c), 5) for c in x],
         "L": round(cut_len, 1),
@@ -241,12 +319,19 @@ def build_member(m, by_id, members, profiles):
 
 
 def build(spec):
-    profiles, members = spec["profiles"], spec["members"]
+    profiles, members = dict(STD_PROFILES, **spec.get("profiles", {})), spec["members"]
     by_id = {}
     for m in members:
         if m["id"] in by_id:
             raise ValueError(f"duplicate member id {m['id']}")
-        m["_pf"] = profiles[m["prof"]]
+        pf = profiles[m["prof"]]
+        if pf["type"] in STD_MTO:                      # bondek package: standard model, free end cuts, counted not weighed
+            if pf["type"] == "DECK":
+                pf = dict(pf, b=float(m["wid"]))
+            m["mto"] = std_mto(m, pf)
+            m.setdefault("ends", [None, None])
+            m.setdefault("rank", 9)
+        m["_pf"] = pf
         m["_f"] = frame(m)
         by_id[m["id"]] = m
     for m in members:
@@ -254,7 +339,12 @@ def build(spec):
             for c in (e if isinstance(e, list) else []):
                 if "host" in c and c["host"] not in by_id:
                     raise ValueError(f"{m['id']}: unknown host {c['host']}")
-    return [build_member(m, by_id, members, profiles) for m in members if not m.get("host_only")]
+    parts = []
+    for m in members:
+        if m.get("host_only"):
+            continue
+        parts += stud_parts(m) if m["_pf"]["type"] == "STUD" else [build_member(m, by_id, members, profiles)]
+    return parts
 
 
 if __name__ == "__main__":

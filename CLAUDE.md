@@ -22,7 +22,9 @@ short and actionable. When a choice is genuinely Yang's, give 2-3 options instea
 - Unit weights, sizes and m2/m only from the Consteel 2025 catalogue (`generate-mto/references/consteel_catalogue.md`, grep it).
 - A steel grade Claude assumes = `*S275`.
 - Bondek is Yang's scope and always comes with shear studs and edgeform; a slab on his steel = bondek even if not drawn (defaults: Bondek II 1.0 BMT, studs 19x100 @ 300, edgeform 1.2 BMT, ASSUMED). In the MTO its own category in m2 / pcs / m, outside the steel tonnage.
-- Every MTO carries painting m2, handrail m run + kg/m run, grating m2, bondek m2, edgeform m run.
+- Every MTO carries painting m2 and, only where the drawings show them, handrail m run + kg/m run, grating m2, bondek m2, edgeform m run. Nothing is shown for an item that is not on the drawings.
+- Bondek, shear studs and edgeform: one layer, hidden by default, always the standard models in `geometry.py`.
+- Buildings: every floor level is one group labelled "Level". Overall structure on the drawings (RC, facade, others) = ghost, one ghost layer per kind.
 - Selecting a handrail assembly in a model shows its kg/m run.
 - Ghost structures: ask before putting them into an IFC.
 - Erection sequence on a model: never edit the original; copy it as "<title> with-sequence".
