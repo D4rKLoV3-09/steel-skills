@@ -453,7 +453,9 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
                     continue
                 kh = 0 if u_ < h["_L"] / 2 else 1
                 hp = partner.get((h["id"], kh))
-                if hp and max(-u_, u_ - h["_L"]) > hp[2] / 2 and hp[0]["id"] not in ban.get((bm["id"], k), ()):   # past the butt: the in-line beam hosts
+                if hp and max(-u_, u_ - h["_L"]) > hp[2] / 2:       # past the butt: the in-line beam hosts
+                    if hp[0]["id"] in ban.get((bm["id"], k), ()):
+                        continue
                     P = (E[0] + o[0] * f, E[1] + o[1] * f)
                     h, kh = hp[0], hp[1]
                     u_ = (P[0] - h["_a"][0]) * h["_t"][0] + (P[1] - h["_a"][1]) * h["_t"][1]
