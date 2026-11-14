@@ -45,6 +45,7 @@ for p in (D, PAGE.parent, XLSX.parent):
 py = sys.executable
 if "--read" in sys.argv or not (HERE / "plan_members.json").exists():
     run("read plans", py, HERE / "read_plans.py", HERE / "plan_members.json")
+    run("read trusses", py, HERE / "read_trusses.py", HERE / "truss_types.json")
 run("spec", py, HERE / "make_spec.py", HERE / "plan_members.json", D / "sjii.spec.json", D / "sjii.extra.json")
 run("geometry", py, GM / "geometry.py", D / "sjii.spec.json", D / "sjii.parts.json")
 run("data", py, HERE / "make_data.py", D / "sjii.spec.json", D / "sjii.parts.json", D / "sjii.extra.json", D / "sjii.data.json")

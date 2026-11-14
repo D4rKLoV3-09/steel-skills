@@ -9,6 +9,7 @@ Reading (PDF points):
   arcs(page, region, wmin, wmax)    bezier curves as chords
   pair(lines, ch, lab, curves)      each mark -> its nearest parallel line
   outlines(page, region)            column outlines, round or rectangular
+  bands(lines)                      members drawn as outlines on an elevation (truss chords, verticals, diagonals)
 Framing (mm):
   connect(beams, cols, profiles)    every beam end runs to its neighbour (rule below); returns the Cautious joints
   bondek(...)                       deck strips, edgeform, stud rows (Yang's bondek package)
@@ -259,6 +260,50 @@ def outlines(page, region, lo=4, hi=30):
     return out
 
 
+def bands(lines, lo=5, hi=32, minlen=25):
+    """Members drawn as outlines (elevations): parallel lines lo..hi pt apart that overlap by 60 % are one member.
+    -> [{"a", "b" (centre line ends), "w" (outline width), "ang" (degrees), "n" (lines in the outline)}]."""
+    L = [(m, math.hypot(m[2] - m[0], m[3] - m[1])) for m in lines]
+    L = [(m, l) for m, l in L if l >= minlen]
+    info = []
+    for m, l in L:
+        t = ((m[2] - m[0]) / l, (m[3] - m[1]) / l)
+        if t[0] < 0 or (abs(t[0]) < 1e-9 and t[1] < 0):
+            t = (-t[0], -t[1])
+        info.append((t, -m[0] * t[1] + m[1] * t[0], sorted([m[0] * t[0] + m[1] * t[1], m[2] * t[0] + m[3] * t[1]]), l))
+    par = list(range(len(L)))
+
+    def find(i):
+        while par[i] != i:
+            par[i] = par[par[i]]
+            i = par[i]
+        return i
+    for i in range(len(L)):
+        ti, oi, si, li = info[i]
+        for j in range(i + 1, len(L)):
+            if abs(ti[0] * info[j][0][1] - ti[1] * info[j][0][0]) > 0.02:
+                continue
+            m = L[j][0]
+            oj = -m[0] * ti[1] + m[1] * ti[0]
+            sj = sorted([m[0] * ti[0] + m[1] * ti[1], m[2] * ti[0] + m[3] * ti[1]])
+            if lo <= abs(oj - oi) <= hi and min(si[1], sj[1]) - max(si[0], sj[0]) > 0.6 * min(li, info[j][3]):
+                par[find(i)] = find(j)
+    groups = {}
+    for i in range(len(L)):
+        groups.setdefault(find(i), []).append(i)
+    out = []
+    for ids in groups.values():
+        if len(ids) < 2:
+            continue
+        t = info[ids[0]][0]
+        offs = [-L[i][0][0] * t[1] + L[i][0][1] * t[0] for i in ids]
+        ss = [v for i in ids for v in (L[i][0][0] * t[0] + L[i][0][1] * t[1], L[i][0][2] * t[0] + L[i][0][3] * t[1])]
+        oc = (min(offs) + max(offs)) / 2
+        P = lambda s_: (s_ * t[0] - oc * t[1], s_ * t[1] + oc * t[0])
+        out.append({"a": P(min(ss)), "b": P(max(ss)), "w": max(offs) - min(offs), "ang": math.degrees(math.atan2(t[1], t[0])), "n": len(ids)})
+    return out
+
+
 # ---------------- framing: every end runs to its neighbour ----------------
 def _dims(pf):
     """Depth and width of a section (I / RHS: h x b, SHS: b, CHS: d)."""
@@ -266,7 +311,7 @@ def _dims(pf):
 
 
 def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
-    """beams [{id, a, b (plan mm, as drawn), prof, arc}], cols [{c, s, round}], lines [(x0, y0, x1, y1)] = drawn lines
+    """beams [{id, a, b (plan mm, as drawn), prof, arc, flat (web horizontal: bears, never coped)}], cols [{c, s, round}], lines [(x0, y0, x1, y1)] = drawn lines
     without a mark (RC wall edge, unmarked member), used only when an end finds no steel and no column.
     Sets a, b, ends, end_kind per beam (col | beam | host | butt | line | arc | free) and returns
     (cautions, ids of beams whose host stops short of the joint)."""
@@ -284,7 +329,7 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
         a, b = bm["a"], bm["b"]
         L = math.dist(a, b)
         bm["_a"], bm["_b"], bm["_L"], bm["_t"] = list(a), list(b), L, ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
-        bm["_d"], bm["_w"] = _dims(profiles[bm["prof"]])
+        bm["_d"], bm["_w"] = _dims(profiles[bm["prof"]])[::-1 if bm.get("flat") else 1]      # flat = web horizontal
         bm["ends"], bm["end_kind"], bm["_at"] = [None, None], ["free", "free"], [None, None]
         if bm.get("arc"):
             for e in ("a", "b"):
@@ -373,7 +418,7 @@ def connect(beams, cols, profiles, lines=(), reach=REACH, back=BACK):
             if hosts:
                 _, f, h, u_ = max(hosts, key=lambda c: c[0])
                 bm[e] = [round(E[0] + o[0] * f, 1), round(E[1] + o[1] * f, 1)]
-                both_i = profiles[h["prof"]]["type"] == "I" and profiles[bm["prof"]]["type"] == "I"
+                both_i = profiles[h["prof"]]["type"] == "I" and profiles[bm["prof"]]["type"] == "I" and not (h.get("flat") or bm.get("flat"))
                 bm["ends"][k] = [{"host": h["id"], "face": "cope" if both_i else "near"}]
                 bm["end_kind"][k], bm["_at"][k] = "beam", (h, u_)
                 if bm["_d"] > h["_d"] + 25:

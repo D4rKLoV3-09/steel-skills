@@ -13,6 +13,10 @@ end runs to its neighbour (ga_plan.connect): column face, crossing beam axis (co
 Cautious joints (big member on a small support) and ends with no neighbour within 1.5 m go to EXTRA.
 Steel columns: marks D40H / SC01 without a line -> column from the floor below to this floor's TOS.
 Bondek package (ga_plan.bondek; ASSUMED Bondek II 1.0 BMT, studs 19x100 @300, edgeform 1.2 BMT x slab).
+Trusses (truss_types.json from read_trusses.py; positions = the plan lines named "Truss <name>"): the elevation is
+centred on its plan line, top chord at the floor TOS; top chord pieces join the floor's beams (so floor beams frame
+into them and they run to their supports), bottom chord / verticals / diagonals follow the elevation and bear on
+the chords. HS2 uses the HS1 elevation (Yang, 14/11/26); HS5 has no elevation and is left out.
 EXTRA = ghosts (RC columns, round where drawn round), cautions, per-floor deck m2 / edgeform m, counts.
 
 Rebuild everything (page + MTO + checks): python models/sjii/build.py   (add --read after a drawing change)
@@ -31,9 +35,11 @@ SLAB = 150                 # "150 BDK" on the plans
 CTB_DX, CTB_DY = 200000, -120000   # CTB drawn beside EDU (own grid frame, not site position)
 COLMARK = {"D40H", "SC01"}
 BLD = {"CTB": "Central Block", "ES": "Education ES", "HS": "Education HS"}
+TYPES = json.load(open(Path(__file__).resolve().parent / "truss_types.json", encoding="utf-8"))
+TRUSS_TYPE = {**{k: k for k in TYPES}, "HS2": "HS1"}          # plan name -> elevation
 
 sheets = json.load(open(sys.argv[1], encoding="utf-8"))
-profiles, members, extra = {}, [], {"ghosts": [], "floors": {}, "skipped": {}, "free_marks": {}, "cautions": [], "open": []}
+profiles, members, extra = {}, [], {"ghosts": [], "floors": {}, "skipped": {}, "free_marks": {}, "cautions": [], "open": [], "trusses": {}, "truss_left": []}
 
 
 def prof(mark):
@@ -93,6 +99,34 @@ for (fr, lv), ss in sorted(floors.items()):
         lines += [(u[0] + dx, u[1] + dy, u[2] + dx, u[3] + dy) for u in s["unlabelled"]]
         for f in s["free"]:
             extra["free_marks"].setdefault(f["mark"], []).append(f"{bl}-{lv}")
+    # ---- trusses named on this floor: top chord pieces join the beams ----
+    insts = []
+    for s in ss:
+        for t in s.get("trusses", []):
+            if t["name"] not in TRUSS_TYPE:
+                extra["truss_left"].append(f"{t['name']} ({s['sheet']}, {math.dist(t['a'], t['b']) / 1000:.1f} m)")
+                continue
+            a, b = [t["a"][0] + dx, t["a"][1] + dy], [t["b"][0] + dx, t["b"][1] + dy]
+            if (b[0] < a[0]) if abs(b[0] - a[0]) > abs(b[1] - a[1]) else (b[1] < a[1]):
+                a, b = b, a                              # elevation left = lower grid
+            L = math.dist(a, b)
+            d = ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+            C = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            T = TYPES[TRUSS_TYPE[t["name"]]]
+            inst = {"id": f"{fr}-{lv}-T{len(insts) + 1}", "name": t["name"], "T": T, "C": C, "d": d, "bldg": s["bldg"], "sheet": s["sheet"]}
+            insts.append(inst)
+
+            def on_line(bm):                             # a beam line drawn on the truss line is the truss itself
+                return all(abs((p[0] - a[0]) * d[1] - (p[1] - a[1]) * d[0]) < 300 and -1000 < (p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1] < L + 1000
+                           for p in (bm["a"], bm["b"]))
+            dropped = [bm for bm in beams if on_line(bm)]
+            if dropped:
+                extra["trusses"].setdefault("replaced", []).append(f"{t['name']} {s['sheet']}: " + ", ".join(bm["mark"] for bm in dropped))
+                beams[:] = [bm for bm in beams if not on_line(bm)]
+            for c in T["tc"]:
+                beams.append({"mark": c["mark"], "a": [round(C[0] + d[0] * c["x0"]), round(C[1] + d[1] * c["x0"])],
+                              "b": [round(C[0] + d[0] * c["x1"]), round(C[1] + d[1] * c["x1"])], "arc": False, "bldg": s["bldg"],
+                              "sheet": s["sheet"], "flat": c["flat"], "truss": inst["id"], "tname": t["name"], "tx": [c["x0"], c["x1"]]})
     zb = below(fr, lv)
     z0 = round(zb * 1000 - SLAB) if zb else tos - 4500
     # ---- steel columns at their marks (D40H / SC01), on the nearest drawn outline ----
@@ -126,17 +160,67 @@ for (fr, lv), ss in sorted(floors.items()):
         bm = byid[c["bm"]]
         o = byid[c["on"]] if "on" in c else None
         extra["cautions"].append({"k": c["k"], "id": c["bm"], "floor": f"{fr}-{lv}", "bldg": bm["bldg"], "sheet": bm["sheet"], "mark": bm["mark"],
-                                  "on": o["mark"] if o else "column %d wide" % min(c["col"]["s"])})
+                                  "on": o["mark"] if o else "column %d wide" % min(c["col"]["s"]),
+                                  "fam": "TC" if bm.get("truss") else None, "on_fam": "TC" if o and o.get("truss") else None})
     extra["open"] += [f"{i} ({byid[i]['mark']})" for i in opened]
     for bm in beams:
         if math.dist(bm["a"], bm["b"]) < 100:
             extra["skipped"].setdefault("too short after joining", []).append(bm["id"])
             continue
-        zc = tos - depth(bm["prof"]) / 2
+        tr = bm.get("truss")
+        Lb = math.dist(bm["a"], bm["b"])
+        zc = tos - (profiles[bm["prof"]]["b"] if bm.get("flat") else depth(bm["prof"])) / 2      # flat = web horizontal
         members.append({"id": bm["id"], "ref": bm["mark"], "prof": bm["prof"], "a": [*bm["a"], zc], "b": [*bm["b"], zc],
-                        "up": [0, 0, 1], "rank": 2, "ends": bm["ends"], "layer": "beam", "floor": f"{fr}-{lv}",
-                        "bldg": bm["bldg"], "src": f"{bm['sheet']} ({bm['mark']} {SCHED[bm['mark']]}); TOS {tos / 1000:+.3f} = FFL - {SLAB}",
-                        "end_kind": bm["end_kind"], "tos": tos})
+                        "up": [(bm["a"][1] - bm["b"][1]) / Lb, (bm["b"][0] - bm["a"][0]) / Lb, 0] if bm.get("flat") else [0, 0, 1],
+                        "rank": 1 if tr else 2, "ends": bm["ends"], "layer": "truss" if tr else "beam", "floor": f"{fr}-{lv}",
+                        "bldg": bm["bldg"], "src": (f"Truss {bm['tname']} top chord: {bm['sheet']} (position), {TYPES[TRUSS_TYPE[bm['tname']]]['sheet']} "
+                                                   f"({bm['mark']} {SCHED[bm['mark']]}); " if tr else f"{bm['sheet']} ({bm['mark']} {SCHED[bm['mark']]}); ")
+                        + f"TOS {tos / 1000:+.3f} = FFL - {SLAB}", "end_kind": bm["end_kind"], "tos": tos,
+                        **({"fam": "TC", "truss": tr, "tname": bm["tname"], "tx": bm["tx"]} if tr else {})})
+    # ---- trusses: bottom chord, verticals, diagonals from the elevation, bearing on the chords ----
+    for inst in insts:
+        T, C, d = inst["T"], inst["C"], inst["d"]
+        tcs = [m for m in members if m.get("truss") == inst["id"]]
+        if not tcs:
+            continue
+        common = {"layer": "truss", "truss": inst["id"], "tname": inst["name"], "floor": f"{fr}-{lv}", "bldg": inst["bldg"], "tos": tos}
+        P = lambda x: [round(C[0] + d[0] * x, 1), round(C[1] + d[1] * x, 1)]
+        at = lambda pieces, x: min(pieces, key=lambda m: max(m["tx"][0] - x, x - m["tx"][1], 0))
+        src = lambda what, mk: f"Truss {inst['name']} {what}: {T['sheet']} ({mk} {SCHED[mk]}), position {inst['sheet']}"
+        bcs = []
+        for j, c in enumerate(T["bc"]):
+            bcs.append({**common, "id": f"{inst['id']}-BC{j + 1}", "ref": c["mark"], "prof": prof(c["mark"]), "fam": "BC", "rank": 1,
+                        "a": [*P(c["x0"]), tos + c["z"]], "b": [*P(c["x1"]), tos + c["z"]], "up": [-d[1], d[0], 0] if c["flat"] else [0, 0, 1],
+                        "ends": [None, None], "tx": [c["x0"], c["x1"]], "src": src("bottom chord", c["mark"])})
+        members += bcs
+        vert = {}
+        for j, v in enumerate(T["v"]):
+            t_, b_ = at(tcs, v["x"]), at(bcs, v["x"])
+            vert[v["x"]] = f"{inst['id']}-V{j + 1}"
+            members.append({**common, "id": vert[v["x"]], "ref": v["mark"], "prof": prof(v["mark"]), "fam": "W", "rank": 2,
+                            "a": [*P(v["x"]), t_["a"][2]], "b": [*P(v["x"]), b_["a"][2]], "up": [d[0], d[1], 0],
+                            "ends": [[{"host": t_["id"], "face": "near"}], [{"host": b_["id"], "face": "near"}]], "src": src("vertical", v["mark"])})
+        for j, g in enumerate(T["d"]):
+            t_, b_ = at(tcs, g["xt"]), at(bcs, g["xb"])
+            ends = [[{"host": h["id"], "face": "near"}] + ([{"host": vert[x], "face": "near"}] if x in vert else []) for h, x in ((t_, g["xt"]), (b_, g["xb"]))]
+            for k, x in ((0, g["xt"]), (1, g["xb"])):    # a diagonal at the end of the top chord also bears on what the chord bears on
+                if k == 0:
+                    for e, lim in ((0, x <= t_["tx"][0] + 600), (1, x >= t_["tx"][1] - 600)):
+                        ends[0] += [({"host": c["host"], "face": "near", "sep": True} if "host" in c else c) for c in (t_["ends"][e] or []) if lim]
+            for o in T["d"]:                           # two diagonals at one node with no vertical between: mitred on the plane across the truss
+                if o is g:
+                    continue
+                for k, e in enumerate(("xt", "xb")):
+                    den = (g["xt"] - o["xt"]) - (g["xb"] - o["xb"])
+                    lam = (g["xt"] - o["xt"]) / den if abs(den) > 1 else None        # where the two axes cross, 0 = top chord, 1 = bottom chord
+                    cross = lam is not None and -0.1 < lam < 1.1 and (lam < 0.5) == (k == 0)
+                    if g[e] not in vert and (cross or abs(g[e] - o[e]) < 400) and (g["xt"] + g["xb"]) != (o["xt"] + o["xb"]):
+                        xm = g["xt"] + lam * (g["xb"] - g["xt"]) if cross else (g[e] + o[e]) / 2
+                        pm = P(xm)
+                        ends[k].append({"plane": [d[0], d[1], 0, d[0] * pm[0] + d[1] * pm[1]]})
+            members.append({**common, "id": f"{inst['id']}-D{j + 1}", "ref": g["mark"], "prof": prof(g["mark"]), "fam": "W", "rank": 3,
+                            "a": [*P(g["xt"]), t_["a"][2]], "b": [*P(g["xb"]), b_["a"][2]], "up": [0, 0, 1], "ends": ends, "src": src("diagonal", g["mark"])})
+        extra["trusses"].setdefault("count", {}).setdefault(f"{inst['bldg']} {inst['name']}", []).append(inst["id"])
     for p, mark, s in steel_cols:
         members.append({"id": f"{fr}-{lv}-col{len(members)}", "ref": mark, "prof": prof(mark), "a": [p[0], p[1], z0],
                         "b": [p[0], p[1], tos - 0.0], "up": [1, 0, 0], "rank": 0, "ends": [None, None], "layer": "col",
@@ -144,7 +228,7 @@ for (fr, lv), ss in sorted(floors.items()):
                         "src": f"{s['sheet']} ({mark} {SCHED[mark]} at the mark); from the floor below "
                                f"({z0 / 1000:+.3f}) to TOS {tos / 1000:+.3f} - ASSUMED storey"})
     # ---- bondek package ----
-    fl = [m for m in members if m["floor"] == f"{fr}-{lv}" and m["layer"] == "beam"]
+    fl = [m for m in members if m["floor"] == f"{fr}-{lv}" and (m["layer"] == "beam" or m.get("fam") == "TC")]
     q = gp.bondek(fl, members, profiles, f"{fr}-{lv}", tos, SLAB)
     kinds = [k for m in fl for k in m["end_kind"]]
     extra["floors"][f"{fr}-{lv}"] = {"ffl": ffl, "tos": tos, "beams": len(fl), **q, "bldgs": sorted({s["bldg"] for s in ss}),
@@ -154,6 +238,7 @@ for (fr, lv), ss in sorted(floors.items()):
 
 ids = {m["id"] for m in members}
 for m in members:
+    m.pop("tx", None)
     for k in (0, 1):                     # host dropped as too short -> square end
         if m["ends"][k] and m["ends"][k][0].get("host", m["id"]) not in ids:   # plane cuts have no host
             m["ends"][k] = None

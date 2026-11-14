@@ -4,7 +4,8 @@
     python models/sjii/make_data.py SPEC.json PARTS.json EXTRA.json OUT_DATA.json
 
 Yang's tags (one-to-one per drawing mark, natural order): every beam mark (B.., BU09, C35KK, R20A) -> UB1..,
-steel columns D40H / SC01 -> UC1.., bondek package BDK1 / SS1 / EF1.
+steel columns D40H / SC01 -> UC1.., truss top chord / bottom chord / web marks -> TC1.. / BC1.. / W1..,
+bondek package BDK1 / SS1 / EF1. Every truss is one lift unit ("Truss CTB1 @ grid").
 Grouping: building (tower) > floor (MTO unit) > lift unit (every beam / column a single loose piece; deck +
 edgeform per floor) > assembly (member; its stud row is a sub-assembly).
 """
@@ -26,11 +27,13 @@ CTB_DX, CTB_DY = 200000, -120000
 ES_HS_X = 54000                           # grid B7: ES west of it, HS from it (deck / edgeform split)
 
 natural = lambda s: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", s)]
-mapping, count = {}, {}
-for ref in sorted({m["ref"] for m in M if m["ref"]}, key=natural):
-    f = "UC" if ref in ("D40H", "SC01") else "UB"
+FAM = lambda m: m.get("fam") or ("UC" if m["ref"] in ("D40H", "SC01") else "UB")       # truss members: TC / BC / W
+tags, count = {}, {}
+for f, ref in sorted({(FAM(m), m["ref"]) for m in M if m["ref"]}, key=lambda k: (k[0], natural(k[1]))):
     count[f] = count.get(f, 0) + 1
-    mapping[ref] = f"{f}{count[f]}"
+    tags[(f, ref)] = f"{f}{count[f]}"
+mapping = {ref: t for (f, ref), t in tags.items() if f in ("UB", "UC")}
+tag_of = lambda ref, fam=None: tags.get((fam, ref)) or mapping.get(ref)
 TAG_FIX = {"bdk": "BDK1", "ss": "SS1", "ef": "EF1"}
 
 # ---------------- units: building x floor ----------------
@@ -80,12 +83,13 @@ def grid_txt(x, y, ctb):
 
 
 # ---------------- layers / categories ----------------
-LAYERS = [("beam", "Floor beams (UB)", "#4f7cac"), ("col", "Steel columns (UC)", "#c9822b"), ("bdk", "Bondek deck", "#a7b3bf"),
+LAYERS = [("beam", "Floor beams (UB)", "#4f7cac"), ("truss", "Trusses (TC / BC / W)", "#b5543f"), ("col", "Steel columns (UC)", "#c9822b"), ("bdk", "Bondek deck", "#a7b3bf"),
           ("ss", "Shear studs (one row per beam)", "#d4a017"), ("ef", "Edgeform", "#5d7385"), ("ghost", "Ghost (RC columns, by others)", "#9aa3ad")]
 LI = {k: i for i, (k, _, _) in enumerate(LAYERS)}
 CATS = [("A", "FLOOR BEAMS (UB) - STEEL FABRICATED FRAMING", ["beam"], "GA plans CTB S-2101..2108, ES S-2221..2229, HS S-2321..2332 (T1)"),
-        ("B", "STEEL COLUMNS (UC) - D40H CHS406.4 / SC01 SHS1200", ["col"], "ES / HS GA plans (marks at the column)"),
-        ("C", "BONDEK PACKAGE - DECK (m2), SHEAR STUDS (pcs), EDGEFORM (m) - ASSUMED SPEC", ["bdk", "ss", "ef"],
+        ("B", "TRUSSES (TC / BC / W) - CTB1-3, ES1, ES1a, HS1, HS2", ["truss"], "S-8101, S-8201 elevations; positions S-2104, S-2224, S-2324, S-2326"),
+        ("C", "STEEL COLUMNS (UC) - D40H CHS406.4 / SC01 SHS1200", ["col"], "ES / HS GA plans (marks at the column)"),
+        ("D", "BONDEK PACKAGE - DECK (m2), SHEAR STUDS (pcs), EDGEFORM (m) - ASSUMED SPEC", ["bdk", "ss", "ef"],
          "GA plans '150 BDK'; S-0033 typical composite slab (1.0 BMT G550)")]
 
 # ---------------- profiles ----------------
@@ -124,16 +128,16 @@ DEPTH = lambda n: spec["profiles"][n].get("h", spec["profiles"][n].get("d", spec
 WORD = {"deep": "frames into the shallower", "butt": "butts in line with", "wide": "is wider than its"}
 caution_of = {}
 for c in extra["cautions"]:
-    other = f"{mapping[c['on']]} (Ref {c['on']})" if c["on"] in mapping else c["on"]
+    other = f"{tag_of(c['on'], c.get('on_fam'))} (Ref {c['on']})" if tag_of(c["on"], c.get("on_fam")) else c["on"]
     caution_of.setdefault(c["id"], []).append(f"{WORD[c['k']]} {other}")
 out = []
 for m, p in zip(M, parts):
     lay = m["layer"]
     b, lv = m["_u"]
     ctb = b == "CTB"
-    q = {k: v for k, v in p.items() if k not in ("bldg", "floor", "layer", "end_kind", "tos", "host_beam", "_u", "rank", "ends", "up", "a", "b")}
+    q = {k: v for k, v in p.items() if k not in ("bldg", "floor", "layer", "end_kind", "tos", "host_beam", "_u", "rank", "ends", "up", "a", "b", "fam", "truss", "tname", "flat")}
     a, e = m["a"], m["b"]
-    q.update({"t": TAG_FIX.get(lay) or mapping[m["ref"]], "layer": LI[lay], "unit": UI[m["_u"]],
+    q.update({"t": TAG_FIX.get(lay) or tags[(FAM(m), m["ref"])], "layer": LI[lay], "unit": UI[m["_u"]],
               "tw": g("tower", BLD[b], "Building"), "sub": -1, "desc": m["prof"],
               "grid": grid_txt((a[0] + e[0]) / 2, (a[1] + e[1]) / 2, ctb) + f" @ {LVN[lv]}"})
     if m["id"] in caution_of:
@@ -149,10 +153,19 @@ for m, p in zip(M, parts):
         q["desc"] = m["mto"]["desc"] + (f" - {m['mto']['set']} pcs" if lay == "ss" else "")
     out.append(q)
 unit_name = dict(UNITS)
+truss_lu = {}
+for m, q in zip(M, out):
+    if m.get("fam") == "TC" and m["truss"] not in truss_lu:
+        truss_lu[m["truss"]] = f"Truss {m['tname']} @ {q['grid']} ({m['truss']})"
 for m, q in zip(M, out):
     lay = m["layer"]
     uk = f"{m['_u'][0]}-{m['_u'][1]}"
     if lay == "ss":
+        continue
+    if lay == "truss":
+        q["desc"] += {"TC": " top chord", "BC": " bottom chord", "W": " web"}[m["fam"]] + f" of Truss {m['tname']}"
+        q["lu"] = g("lift", truss_lu[m["truss"]], "Truss")
+        q["asm"] = g("asm", f"{q['t']} @ {q['grid']} ({m['id']})")
         continue
     if lay in ("bdk", "ef"):
         q["lu"] = g("lift", f"Bondek deck + edgeform - {unit_name[uk]}")
@@ -171,12 +184,12 @@ for m, q in zip(M, out):
 from sections import SCHED  # noqa: E402
 grp = {}
 for c in extra["cautions"]:
-    grp.setdefault((c["bldg"], c["k"], c["mark"], c["on"]), []).append(c)
-sec = lambda r: f"{mapping[r]} (Ref {r}, {SCHED[r]})" if r in mapping else r
+    grp.setdefault((c["bldg"], c["k"], (c["mark"], c.get("fam")), (c["on"], c.get("on_fam"))), []).append(c)
+sec = lambda r: f"{tag_of(*r)} (Ref {r[0]}, {SCHED[r[0]]})" if tag_of(*r) else r[0]
 TXT = {"deep": "{a} frames into the shallower {b}", "butt": "{a} butts in line with {b} - different sections",
        "wide": "{a} is wider than its {b}"}
 cautions = []
-for (b, k, mk, on), cs in sorted(grp.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+for (b, k, mk, on), cs in sorted(grp.items(), key=lambda kv: (-len(kv[1]), str(kv[0]))):
     lvs = sorted({c["floor"].split("-")[1] for c in cs}, key=list(LVN).index)
     dwg = sorted({re.search(r"S-\d{4}", c["sheet"]).group(0) for c in cs})
     cautions.append(f"{BLD[b]}: " + TXT[k].format(a=sec(mk), b=sec(on)) + f" - {len(cs)} joint{'s' if len(cs) > 1 else ''} "
@@ -184,6 +197,13 @@ for (b, k, mk, on), cs in sorted(grp.items(), key=lambda kv: (-len(kv[1]), kv[0]
 CAUT_MAX = 30
 cautions_mto = cautions[:CAUT_MAX] + ([f"+ {len(cautions) - CAUT_MAX} more pairs ({sum(len(v) for v in grp.values()) - sum(len(v) for v in sorted(grp.values(), key=len, reverse=True)[:CAUT_MAX])} joints) - full list in the model Notes; every such member reads CAUTIOUS in its source line"] if len(cautions) > CAUT_MAX else [])
 n_ends = 2 * sum(1 for m in M if m["layer"] == "beam")
+tcount = {k: len(v) for k, v in extra["trusses"].get("count", {}).items()}
+tkg = {}
+for m, q in zip(M, out):
+    if m["layer"] == "truss":
+        tkg[m["tname"]] = tkg.get(m["tname"], 0) + q["kg"]
+truss_t = sum(tkg.values()) / 1000
+hs_tc = sum(q["L"] for m, q in zip(M, out) if m.get("fam") == "TC" and m["ref"] == "B61T") / 1000 * (393.0 - 179.0) / 1000
 n_free = sum(v["free_ends"] for v in extra["floors"].values())
 n_float = sum(v["floating"] for v in extra["floors"].values())
 n_line = sum(k == "line" for m in M if m["layer"] == "beam" for k in m["end_kind"])
@@ -194,9 +214,13 @@ fm = extra["free_marks"]
 n_free_beam = sum(len(v) for k, v in fm.items() if k not in ("D40H", "SC01"))
 n_beam = sum(1 for m in M if m["layer"] == "beam")
 decisions = [
-    "Trusses CTB1-CTB3 (S-8101) and ES1 / ES1a / HS1 (S-8201): NOT in this version (elevations have no plan level for CTB, "
-    "two-storey trusses 4th-6th storey for EDU). A) model them in rev 2 from the elevations (estimate 250-400 t); "
-    "B) take them from a Tekla / IFC model if the engineer has one; C) price them separately.",
+    f"Truss HS1 top chord: S-8201 labels it B61T | C35W | B61T but draws it 419 deep, the size of C35W. The labels were followed (UB610x305x179). "
+    f"A) keep; B) C35W full length: + {hs_tc:.0f} t on the {tcount.get('HS HS1', 0) + tcount.get('HS HS2', 0)} HS trusses.",
+    f"HS 6th storey: Truss HS2 x {tcount.get('HS HS2', 0)} has no elevation on the set; modelled with the HS1 elevation as you confirmed (14/11/26) = {tkg.get('HS2', 0) / 1000:.0f} t. "
+    f"Truss HS5 ({', '.join(extra['truss_left']) or 'S-2326'}; the plan names it twice) and the truss-symbol lines without a name on the HS 4th storey edges have no elevation: not in. "
+    "A) ask Arup for the HS2 / HS5 elevations; B) allow tonnage for HS5 by length.",
+    "Truss CTB3: the five plan lines carry both the beam mark B61V and the name Truss CTB3; modelled as the truss only (top chord C35FF). "
+    "A) keep; B) add the B61V beams on top (5 x 7.2 m = 5.6 t).",
     "Site position: CTB and EDU are shown side by side in their own grid frames (no common grid on the overall plan S-2001). "
     "A) keep (MTO unaffected); B) send the site setting-out so the blocks sit at their true angle.",
     f"Unpaired beam marks: {n_free_beam} marks ({n_free_beam / max(1, n_beam) * 100:.1f} % of {n_beam} modelled beams) could not be tied to a drawn line "
@@ -217,6 +241,10 @@ assumptions = [
     f"{n_line} beam ends ({n_line / n_ends * 100:.1f} %) stop on a drawn line without a mark (RC wall edge or unmarked member); {n_free} ends ({n_free / n_ends * 100:.1f} %) "
     f"found no neighbour within 1.5 m and stay as drawn (cantilever tip or a support not on the steel plans); {n_float} beams have no support found at either end; "
     f"{len(extra['open'])} joints where the supporting beam is drawn stopping short. Curved beams modelled as straight chords (about 12 per beam).",
+    f"Trusses ({sum(tcount.values())} no., {truss_t:,.0f} t: " + ", ".join(f"{k.split()[1]} x {v}" for k, v in sorted(tcount.items())) + "): members from the elevations S-8101 / S-8201 (1:50, outlines), "
+    "each truss placed on the plan line that names it, elevation centred on that line, top chord at the floor top of steel; top chords run to their supports like the floor beams; "
+    "verticals and diagonals bear on the chords (welded, zero gap). Chords of CTB1 / CTB2 lie flat (web horizontal) as drawn. "
+    "CTB2 chords carry no mark on S-8101: taken as BU09 (drawn 421 wide). HS1 bottom chord carries no mark: taken as C35W (drawn 419 deep).",
     "Steel columns D40H (CHS406.4x14.2) and SC01 (SHS1200x1200x30, concrete filled - concrete by others) placed at their marks, from the floor below "
     "to the TOS of the floor they are marked on. RC columns shown round or rectangular as drawn (ghost, by others).",
     "Unit weights and m2/m from Consteel 2025 (hollow sections hot-finished; RHS200x100x5 only cold-formed). UB/UC tw/tf in the 3D view derived from kg/m (display only). "
@@ -228,7 +256,8 @@ assumptions = [
     "CTB and EDU drawn beside each other in their own grid frames (CTB shifted +200 m / -120 m in the viewer); levels are true.",
 ]
 left = [
-    "Trusses CTB1, CTB2, CTB3 (S-8101) and ES1 / ES1a / HS1 (S-8201) - see Decisions (CTB4 plan S-2104 and ES / HS 4th storey plans show their lines).",
+    "Truss HS5 (HS 6th storey, S-2326) and the unnamed truss-symbol lines on the HS 4th storey (S-2324): no elevation on the set - see Decisions.",
+    "Truss gussets, splices, bearing / end plates and the chord end details at the RC columns: not detailed on S-8101 / S-8201.",
     f"{n_free_beam} beam marks not tied to a drawn line ({', '.join(f'{k} {len(v)}' for k, v in sorted(fm.items()) if k not in ('D40H', 'SC01'))}) - mostly dashed "
     "transfer members (BU09, C35KK) and marks placed off the line.",
     f"{len(extra['skipped'].get('too short after joining', []))} drawn pieces shorter than 100 mm after joining to their supports.",
@@ -243,12 +272,12 @@ gy = [[k, v] for v, k in EDU_Y] + [[k, v] for v, k in CTB_Y]
 data = {
     "meta": {"title": "SJII Steel Framing", "grand_total_label": "SJII STEEL FRAMING", "currency": "RM", "export_prefix": "SJII",
              "card": {"title": "SJII - Central Block + Education Building (ES / HS) steel framing",
-                      "desc": f"Steel floor framing on RC columns / cores, {n_beam:,} beams on {len(fl)} floors, bondek slabs",
+                      "desc": f"Steel floor framing on RC columns / cores, {n_beam:,} beams on {len(fl)} floors, {sum(tcount.values())} trusses, bondek slabs",
                       "ref": "Arup tender GA set T1 (30/10/26) S-2101..2332 · S355JR"},
              "datum_z": 0, "grade": "S355JR", "unit_names": {k: v for k, v in UNITS}},
     "header": {"client": "ST. JOSEPH'S INSTITUTION INTERNATIONAL LTD", "project": "SJII - 1033 Upper Serangoon Road (Arup job 314457-00), tender",
-               "description": "STRUCTURAL STEEL - FLOOR BEAMS, STEEL COLUMNS, BONDEK PACKAGE (from 3D model, version 1 - trusses not included)",
-               "contractor": "", "date": "13-11-2026"},
+               "description": "STRUCTURAL STEEL - FLOOR BEAMS, STEEL COLUMNS, TRUSSES, BONDEK PACKAGE (from 3D model, rev 2)",
+               "contractor": "", "date": "14-11-2026"},
     "parts": out, "groups": groups,
     "layers": [{"k": k, "n": n, "c": c} for k, n, c in LAYERS],
     "units": [n for _, n in UNITS], "unitKeys": [k for k, _ in UNITS],
@@ -268,4 +297,5 @@ json.dump(data, open(sys.argv[4], "w", encoding="utf-8"), ensure_ascii=False, se
 print(f"{len(out)} parts, steel {kg_steel:,.0f} kg, {len(groups)} groups, {len(UNITS)} units; tags: "
       + ", ".join(f"{k} {v}" for k, v in sorted(count.items())))
 print(f"cautious: {len(cautions)} pairs, {len(extra['cautions'])} joints")
+print(f"trusses: {sum(tcount.values())} no., {truss_t:,.1f} t; tags " + ", ".join(f"{r}->{t}" for (f, r), t in tags.items() if f in ("TC", "BC", "W")))
 print("mapping:", ", ".join(f"{k}->{v}" for k, v in mapping.items()))

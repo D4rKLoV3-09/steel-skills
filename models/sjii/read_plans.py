@@ -46,7 +46,43 @@ def sheets():
             yield b, lv, tab[lv], f
 
 
+TRUSS = re.compile(r"^(CTB\d|ES\d[a-z]?|HS\d)$")       # "Truss <name>" written beside an unmarked line
 WMIN, WMAX = 0.9, 1.4      # beams 0.96 or 1.32 pt (columns / walls 1.32 stay unlabelled)
+
+
+def truss_lines(page, region, lab, marked, gap=43):
+    """Each truss name -> its drawn line (0.9-2.0 pt wide, over 1.4 m long, name up to 20 pt off it), grown over
+    pieces in line with it that carry no beam mark and no other truss name (gaps under 3 m, e.g. at columns)."""
+    tl = [m for m in gp.merge(page, region, WMIN, 2.0) if math.hypot(m[2] - m[0], m[3] - m[1]) > 20]
+    paired, _, own = gp.pair(tl, list(range(len(tl))), lab, [], off=20)
+
+    def on_marked(q):
+        mx, my = (q[0] + q[2]) / 2, (q[1] + q[3]) / 2
+        for m in marked:
+            vx, vy = m[2] - m[0], m[3] - m[1]
+            u = max(0, min(1, ((mx - m[0]) * vx + (my - m[1]) * vy) / (vx * vx + vy * vy)))
+            if math.hypot(mx - m[0] - u * vx, my - m[1] - u * vy) < 1.5:
+                return True
+        return False
+    out = []
+    for m in paired:
+        a, b = m["pts"][0], m["pts"][-1]
+        L = math.dist(a, b)
+        t = ((b[0] - a[0]) / L, (b[1] - a[1]) / L)
+        iv = []
+        for i, q in enumerate(tl):
+            if i in own or abs((q[2] - q[0]) * t[1] - (q[3] - q[1]) * t[0]) > 0.02 * math.dist(q[:2], q[2:]):
+                continue
+            if abs((q[0] - a[0]) * t[1] - (q[1] - a[1]) * t[0]) < 1 and not on_marked(q):
+                iv.append(sorted(((q[0] - a[0]) * t[0] + (q[1] - a[1]) * t[1], (q[2] - a[0]) * t[0] + (q[3] - a[1]) * t[1])))
+        s0, s1, grown = 0.0, L, True
+        while grown:
+            grown = False
+            for lo, hi in iv:
+                if lo < s0 <= hi + gap or lo - gap <= s1 < hi:
+                    s0, s1, grown = min(s0, lo), max(s1, hi), True
+        out.append((m["mark"], (a[0] + t[0] * s0, a[1] + t[1] * s0), (a[0] + t[0] * s1, a[1] + t[1] * s1)))
+    return out
 
 
 def read(b, lv, ffl, f):
@@ -77,6 +113,7 @@ def read(b, lv, ffl, f):
         for p, q in zip(P, P[1:]):
             mem.append({"mark": m["mark"], "a": p, "b": q, **({"arc": True} if len(P) > 2 else {})})
     free = [{"mark": t, "at": [X(x), Y(y)]} for t, x, y in loose]
+    trusses = [{"name": n, "a": [X(p[0]), Y(p[1])], "b": [X(q[0]), Y(q[1])]} for n, p, q in truss_lines(page, region, gp.labels(page, region, TRUSS), [lines[i] for i in range(len(lines)) if ch[i] in used])]
     # slab thickness labels "<thk>" directly above "BDK"
     bdk = []
     for w in words:
@@ -88,8 +125,8 @@ def read(b, lv, ffl, f):
              "round": c["round"]} for c in gp.outlines(page, region)]
     unl = [i for i in range(len(lines)) if ch[i] not in used]
     print(f"{b}-{lv} FFL {ffl:.2f}: {len(mem)} members, {len(free)} unpaired marks, {len({ch[i] for i in unl})} unlabelled lines, "
-          f"{len(bdk)} BDK labels, {len(cols)} column outlines ({sum(c['round'] for c in cols)} round), grid check {err:.0f} mm")
-    return {"bldg": b, "lv": lv, "ffl": ffl, "sheet": f.stem, "members": mem, "free": free, "bdk": bdk, "cols": cols,
+          f"{len(bdk)} BDK labels, {len(cols)} column outlines ({sum(c['round'] for c in cols)} round), {len(trusses)} trusses, grid check {err:.0f} mm")
+    return {"bldg": b, "lv": lv, "ffl": ffl, "sheet": f.stem, "members": mem, "free": free, "bdk": bdk, "cols": cols, "trusses": trusses,
             "unlabelled": [[X(lines[i][0]), Y(lines[i][1]), X(lines[i][2]), Y(lines[i][3])] for i in unl]}
 
 
