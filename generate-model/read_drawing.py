@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Fast reader for vector PDF drawings (PyMuPDF). Replaces hand-cropping and eyeballing.
 
+    python read_drawing.py index   PDF_OR_FOLDER [...] --out DIR [--prev OLD/sheets.json]
+                                   START HERE: index.md = every sheet as text (title block, views, marks, sizes,
+                                   levels, dims; about 1 k tokens per A1 sheet), sheets.json, thumbnails
+    python read_drawing.py crop    DIR --view ID | --find TEXT | --box x0 y0 x1 y1 [--part tl|tr|bl|br] [--max-px 1400]
+                                   one view / one mark as an image (sheet_index.py has the details)
     python read_drawing.py info    PDF OUTDIR                     page sizes, text per page, overview PNGs
     python read_drawing.py words   PDF PAGE REGEX [x0 y0 x1 y1]   words matching REGEX with centre (pt)
     python read_drawing.py render  PDF PAGE x0 y0 x1 y1 DPI OUT   crop to PNG (only to settle an ambiguity)
@@ -143,7 +148,21 @@ def main():
     for k, v in (("--wmin", 0.9), ("--wmax", 99.0), ("--minlen", 15.0)):
         s.add_argument(k, type=float, default=v)
     s.add_argument("--prefix", default="X-")
+    s = sub.add_parser("index"); s.add_argument("inputs", nargs="+"); s.add_argument("--out", required=True)
+    s.add_argument("--prev"); s.add_argument("--no-thumbs", action="store_true")
+    s = sub.add_parser("crop"); s.add_argument("read_dir"); s.add_argument("--view"); s.add_argument("--find")
+    s.add_argument("--box", nargs=4, type=float); s.add_argument("--sheet"); s.add_argument("--pad", type=float, default=25)
+    s.add_argument("--max-px", type=int, default=1400); s.add_argument("--dpi", type=int); s.add_argument("--part", choices=["tl", "tr", "bl", "br"])
     a = ap.parse_args()
+    if a.cmd in ("index", "crop"):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import sheet_index
+        if a.cmd == "index":
+            return sheet_index.build_index(a.inputs, a.out, a.prev, not a.no_thumbs)
+        if not (a.view or a.find or a.box):
+            ap.error("crop needs --view, --find or --box")
+        return sheet_index.crop(a.read_dir, a.view, a.find, a.box, a.sheet, a.pad, a.max_px, a.dpi, a.part)
     doc = fitz.open(a.pdf)
     if a.cmd == "info":
         out = Path(a.outdir); out.mkdir(parents=True, exist_ok=True)

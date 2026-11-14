@@ -440,7 +440,7 @@ function onWheel(e){
   let D0 = hits.length ? hits[0].distance : camera.position.distanceTo(controls.target);
   /* a notch never shrinks below minStep, so the camera keeps moving (and passes through a face) however close it is;
      the orbit / pan centre never comes closer than minTarget, so drag and pan do not crawl after zooming in */
-  const minStep = Math.max(diag * 0.006, 0.15), minTarget = Math.max(diag * 0.02, 1.5);
+  const minStep = Math.min(Math.max(diag * 0.006, 0.15), 0.3), minTarget = Math.min(Math.max(diag * 0.02, 1.5), 4);   // capped: a big site must not jump metres per notch
   const sgn = e.deltaY < 0 ? 1 : -1;
   const notches = Math.min(4, Math.max(1, Math.round(Math.abs(e.deltaY) / 100)));
   for (let n = 0; n < notches; n++){
@@ -460,8 +460,8 @@ function buildGrid(){
   gridGroup = new THREE.Group(); scene.add(gridGroup);
   const z = C0[2], mat = new THREE.LineDashedMaterial({color: new THREE.Color(css('--grid') || '#a8562e'), dashSize: 0.6, gapSize: 0.25, transparent: true, opacity: 0.85});
   const xs = D.gx, ys = D.gy;
-  const gxs = xs.map(g => g[1]), gys = ys.map(g => g[1]), ext = D._ext, pad = 1500;     // grid lines run past the outer grids and the model
-  const xmin = Math.min(ext.lo[0], ...gxs) - pad, xmax = Math.max(ext.hi[0], ...gxs) + pad, ymin = Math.min(ext.lo[1], ...gys) - pad, ymax = Math.max(ext.hi[1], ...gys) + pad;
+  const gxs = xs.map(g => g[1]), gys = ys.map(g => g[1]), ext = D._ext, pg = 2200, pm = 1000;     // grid lines run 2.2 m past the outer grids and at least 1 m past the model
+  const xmin = Math.min(ext.lo[0] - pm, Math.min(...gxs) - pg), xmax = Math.max(ext.hi[0] + pm, Math.max(...gxs) + pg), ymin = Math.min(ext.lo[1] - pm, Math.min(...gys) - pg), ymax = Math.max(ext.hi[1] + pm, Math.max(...gys) + pg);
   const line = (a, b) => { const g = new THREE.BufferGeometry().setFromPoints([a, b]); const l = new THREE.Line(g, mat); l.computeLineDistances(); gridGroup.add(l); };
   for (const [n, x] of xs){ line(W(x, ymin, z), W(x, ymax, z)); gridLabels.push({el: mkLbl('gbub', n), p: W(x, ymin - 900, z), pri: 0, kind: 'b'}); gridLabels.push({el: mkLbl('gbub', n), p: W(x, ymax + 900, z), pri: 0, kind: 'b'}); }
   for (const [n, y] of ys){ line(W(xmin, y, z), W(xmax, y, z)); gridLabels.push({el: mkLbl('gbub', n), p: W(xmin - 900, y, z), pri: 0, kind: 'b'}); gridLabels.push({el: mkLbl('gbub', n), p: W(xmax + 900, y, z), pri: 0, kind: 'b'}); }

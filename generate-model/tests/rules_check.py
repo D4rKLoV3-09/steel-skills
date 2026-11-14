@@ -71,7 +71,7 @@ def fixture():
              for k in range(3)]
     p2 = geometry.build({"profiles": prof2, "members": mem2})
     for code, title, lname, marks in (("Y", "GRATING (TEST)", "Grating (test)", ("GRT1",)), ("X", "BONDEK PACKAGE (TEST)", "Bondek (test)", ("BDK1", "EF1", "SS1"))):
-        d["layers"].append({"k": code.lower(), "n": lname, "c": "#888888"})
+        d["layers"].append(dict({"k": code.lower(), "n": lname, "c": "#888888"}, **({"off": True} if code == "X" else {})))   # bondek package: one layer, hidden when the page opens
         d["cats"].append({"code": code, "title": title, "layers": [len(d["layers"]) - 1], "dwg": "test"})
         d["groups"].append({"level": "asm", "name": f"{title.title()} assembly"})
         for q in p2:

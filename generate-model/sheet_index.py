@@ -1,36 +1,33 @@
 #!/usr/bin/env python3
-"""Vector PDF drawings -> a small text index, so sheets are read as text first and looked at only in crops.
+"""Sheet index for vector PDF drawings (PyMuPDF): read a sheet as text first, look only at crops.
+Used through read_drawing.py (same code on Yang's PC and in a claude.ai cloud session):
 
-    python read_drawings.py PDF [PDF ...] --out jobs/<job>/out/read
-    python read_drawings.py jobs/<job> --out jobs/<job>/out/read        (every PDF in the folder)
-    python read_drawings.py ... --prev OLD/sheets.json                  (marks sheets whose text changed)
+    python read_drawing.py index PDF_OR_FOLDER [...] --out jobs/<job>/out/read [--prev OLD/sheets.json]
+    python read_drawing.py crop  jobs/<job>/out/read --view 2A | --find F-2FAPT2-SC-01 | --box x0 y0 x1 y1
+                                 [--sheet NAME] [--pad 25] [--max-px 1400] [--dpi N] [--part tl|tr|bl|br]
 
-Writes into --out:
-  index.md       read this first (about 1-2 k tokens per A1 sheet): title block, then every view with its
-                 scale, grids, member marks, section sizes, levels, dimensions and other text; legends and notes.
-  sheets.json    the same with coordinates (points, as displayed) for crop.py and later scripts. Do not read it.
-  thumbs/<sheet>.png   one low-resolution overview per sheet (look at it once to see the arrangement).
+index writes into --out:
+  index.md       read this first (about 1 k tokens per A1 sheet): title block, then every view with its scale,
+                 grids, member marks, section sizes, levels, dimensions and other text; legends and notes in reading order.
+  sheets.json    the same with coordinates (points, as displayed) for crop and later scripts. Do not read it.
+  thumbs/<sheet>.png   one low-resolution overview per sheet (look once, for the arrangement).
+  --prev marks each sheet new / changed / same against an earlier index, so only changed sheets are read again.
+crop renders one view (id from index.md), the surroundings of a text, or a box, capped at --max-px, and prints
+mm per pixel for a scaled view (a dimension measured that way is "scaled off the drawing").
 
-Then look at details with crop.py (by view id, by text, or by box). Never rasterise a whole sheet at high dpi.
-
-How views are found: the vector linework and text are clustered by white space; a cluster is named by the view
-title inside it (the line above a scale such as "1 : 50"). Clusters holding several titles are cut between them.
-A sheet with fewer than MIN_WORDS words is flagged "scan_or_outlined_text": its text is not real text, so use
-the thumbnail and crops only (or OCR).
-Needs: pdfplumber, opencv (cv2), numpy, poppler (pdftotext, pdftoppm).
+How views are found: linework and text are clustered by white space; a cluster is named by the view title inside
+it (the line above a scale such as "1 : 50"); a cluster with several titles is cut between them. A sheet with
+fewer than MIN_WORDS words is flagged "scan_or_outlined_text": thumbnail and crops only.
+Needs only PyMuPDF and numpy.
 """
-import argparse
 import hashlib
 import json
 import pathlib
 import re
-import subprocess
 import sys
-import xml.etree.ElementTree as ET
 
-import cv2
 import numpy as np
-import pdfplumber
+import pymupdf
 
 CELL = 4.0            # pt per mask cell
 GAP = 13.0            # pt: linework closer than 2 x GAP belongs to the same view
@@ -51,74 +48,53 @@ TB_LABELS = ("DRAWING NO", "DWG NO", "DRAWING TITLE", "PROJECT TITLE", "REV", "S
 
 
 # ---------------- text ----------------
-def text_lines(pdf, page_no):
-    """Lines of text with boxes in displayed coordinates (pdftotext handles rotated pages and vertical text)."""
-    xml = subprocess.run(["pdftotext", "-bbox-layout", "-f", str(page_no), "-l", str(page_no), str(pdf), "-"],
-                         capture_output=True, text=True, check=True).stdout
-    xml = re.sub(r"<!DOCTYPE[^>]*>", "", xml).replace('xmlns="http://www.w3.org/1999/xhtml"', "")
-    root = ET.fromstring(xml)
-    page = root.find(".//page")
+def text_lines(page):
+    """Lines of text with boxes in displayed coordinates. Text along a sloping member comes as one line ("slant")."""
     out = []
-    for bi, block in enumerate(page.iter("block")):
-        for line in block.iter("line"):
-            words = [w.text or "" for w in line.iter("word")]
-            if not words:
-                continue
-            box = [float(line.get(k)) for k in ("xMin", "yMin", "xMax", "yMax")]
-            out.append({"t": " ".join(words).strip(), "box": box, "block": bi})
+    for bi, b in enumerate(page.get_text("dict")["blocks"]):
+        for ln in b.get("lines", []):
+            # spans far apart on one baseline are separate labels (two marks, a mark and a dimension): split them
+            runs, cur = [], None
+            horiz = abs(ln["dir"][0]) >= abs(ln["dir"][1])
+            for s in ln["spans"]:
+                if not s["text"].strip():
+                    continue
+                gap = 0
+                if cur:
+                    gap = (s["bbox"][0] - cur["box"][2]) if horiz else min(abs(cur["box"][1] - s["bbox"][3]), abs(s["bbox"][1] - cur["box"][3]))
+                if cur and abs(gap) <= 1.2 * s["size"]:
+                    cur["t"] += s["text"]
+                    cur["box"] = [min(cur["box"][0], s["bbox"][0]), min(cur["box"][1], s["bbox"][1]),
+                                  max(cur["box"][2], s["bbox"][2]), max(cur["box"][3], s["bbox"][3])]
+                else:
+                    cur = {"t": s["text"], "box": list(s["bbox"]), "block": bi}
+                    runs.append(cur)
+            for r in runs:
+                r["t"] = re.sub(r"\s+", " ", r["t"]).strip()
+                if abs(ln["dir"][0]) > 0.02 and abs(ln["dir"][1]) > 0.02:
+                    r["slant"] = True
+                if r["t"]:
+                    out.append(r)
     return out
-
-
-def merge_slanted(lines, page):
-    """Text written along a sloping member (a brace mark) reaches pdftotext as fragments: rebuild it from the
-    characters, which carry their angle, and drop the fragments."""
-    import math
-    runs, cur = [], None
-    for c in page.chars:
-        m = c["matrix"]
-        ang = round(math.degrees(math.atan2(m[1], m[0])))
-        if ang % 90 == 0:
-            cur = None
-            continue
-        cx, cy = (c["x0"] + c["x1"]) / 2, (c["top"] + c["bottom"]) / 2
-        if cur and cur["ang"] == ang and math.hypot(cx - cur["last"][0], cy - cur["last"][1]) < 2.2 * c["size"]:
-            if math.hypot(cx - cur["last"][0], cy - cur["last"][1]) > 0.95 * c["size"]:
-                cur["t"] += " "
-            cur["t"] += c["text"]
-            cur["pts"].append((cx, cy))
-        else:
-            cur = {"ang": ang, "t": c["text"], "pts": [(cx, cy)]}
-            runs.append(cur)
-        cur["last"] = (cx, cy)
-    runs = [r for r in runs if r["t"].strip()]
-    if not runs:
-        return lines
-    pts = [p for r in runs for p in r["pts"]]
-    keep = []
-    for l in lines:
-        b = l["box"]
-        hit = sum(1 for x, y in pts if b[0] - 2 <= x <= b[2] + 2 and b[1] - 2 <= y <= b[3] + 2)
-        if hit < max(1, 0.6 * len(l["t"].replace(" ", ""))):
-            keep.append(l)
-    for r in runs:
-        xs, ys = [p[0] for p in r["pts"]], [p[1] for p in r["pts"]]
-        keep.append({"t": re.sub(r"\s+", " ", r["t"]).strip(), "box": [min(xs) - 3, min(ys) - 3, max(xs) + 3, max(ys) + 3],
-                     "block": -1, "slant": r["ang"]})
-    return keep
 
 
 # ---------------- linework ----------------
 def segments(page):
+    """Every straight piece of linework (curves by their chord): (x0, y0, x1, y1)."""
     segs = []
-    for l in page.lines:
-        segs.append((l["x0"], l["top"], l["x1"], l["bottom"]))
-    for r in page.rects:
-        x0, y0, x1, y1 = r["x0"], r["top"], r["x1"], r["bottom"]
-        segs += [(x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)]
-    for c in page.curves:
-        pts = c.get("pts") or []
-        for a, b in zip(pts, pts[1:]):
-            segs.append((a[0], a[1], b[0], b[1]))
+    for d in page.get_drawings():
+        for it in d["items"]:
+            if it[0] == "l":
+                segs.append((it[1].x, it[1].y, it[2].x, it[2].y))
+            elif it[0] == "re":
+                r = it[1]
+                segs += [(r.x0, r.y0, r.x1, r.y0), (r.x1, r.y0, r.x1, r.y1), (r.x1, r.y1, r.x0, r.y1), (r.x0, r.y1, r.x0, r.y0)]
+            elif it[0] == "c":
+                segs.append((it[1].x, it[1].y, it[4].x, it[4].y))
+            elif it[0] == "qu":
+                q = it[1]
+                pts = [q.ul, q.ur, q.lr, q.ll]
+                segs += [(a.x, a.y, b.x, b.y) for a, b in zip(pts, pts[1:] + pts[:1])]
     return segs
 
 
@@ -181,27 +157,50 @@ def find_titles(lines):
 
 
 def cluster(W, H, segs, lines, skip_regions):
+    """Boxes of the white-space-separated groups of linework and text (numpy only: coarse mask, dilate, flood fill)."""
     gw, gh = int(W / CELL) + 2, int(H / CELL) + 2
-    mask = np.zeros((gh, gw), np.uint8)
+    mask = np.zeros((gh, gw), bool)
     for x0, y0, x1, y1 in segs:
         if (abs(x0 - x1) < 1 and abs(y0 - y1) > 0.8 * H) or (abs(y0 - y1) < 1 and abs(x0 - x1) > 0.8 * W):
             continue                                              # sheet frame
         if any(inside([min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)], r) for r in skip_regions):
             continue
-        cv2.line(mask, (int(x0 / CELL), int(y0 / CELL)), (int(x1 / CELL), int(y1 / CELL)), 255, 1)
+        n = int(max(abs(x1 - x0), abs(y1 - y0)) / CELL) + 2
+        xs = np.clip((np.linspace(x0, x1, n) / CELL).astype(int), 0, gw - 1)
+        ys = np.clip((np.linspace(y0, y1, n) / CELL).astype(int), 0, gh - 1)
+        mask[ys, xs] = True
     for l in lines:
         b = l["box"]
         if any(inside(b, r) for r in skip_regions):
             continue
-        cv2.rectangle(mask, (int(b[0] / CELL), int(b[1] / CELL)), (int(b[2] / CELL), int(b[3] / CELL)), 255, -1)
-    k = int(GAP / CELL) * 2 + 1
-    fat = cv2.dilate(mask, np.ones((k, k), np.uint8))
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(fat, 8)
+        mask[max(0, int(b[1] / CELL)):min(gh, int(b[3] / CELL) + 1), max(0, int(b[0] / CELL)):min(gw, int(b[2] / CELL) + 1)] = True
+    fat = mask.copy()
+    for _ in range(int(GAP / CELL)):                              # square dilation, one cell per pass
+        f = fat.copy()
+        f[1:, :] |= fat[:-1, :]
+        f[:-1, :] |= fat[1:, :]
+        g = f.copy()
+        g[:, 1:] |= f[:, :-1]
+        g[:, :-1] |= f[:, 1:]
+        fat = g
+    lab = np.zeros(fat.shape, bool)
     boxes = []
-    for i in range(1, n):
-        x, y, w, h, _ = stats[i]
+    for sy, sx in zip(*np.nonzero(fat)):
+        if lab[sy, sx]:
+            continue
+        stack, lab[sy, sx] = [(int(sy), int(sx))], True
+        x_lo = x_hi = int(sx)
+        y_lo = y_hi = int(sy)
+        while stack:
+            y, x = stack.pop()
+            x_lo, x_hi, y_lo, y_hi = min(x_lo, x), max(x_hi, x), min(y_lo, y), max(y_hi, y)
+            for yy in (y - 1, y, y + 1):
+                for xx in (x - 1, x, x + 1):
+                    if 0 <= yy < gh and 0 <= xx < gw and fat[yy, xx] and not lab[yy, xx]:
+                        lab[yy, xx] = True
+                        stack.append((yy, xx))
         pad = GAP - CELL
-        boxes.append([max(0, x * CELL + pad), max(0, y * CELL + pad), min(W, (x + w) * CELL - pad), min(H, (y + h) * CELL - pad)])
+        boxes.append([max(0, x_lo * CELL + pad), max(0, y_lo * CELL + pad), min(W, (x_hi + 1) * CELL - pad), min(H, (y_hi + 1) * CELL - pad)])
     return boxes
 
 
@@ -331,16 +330,30 @@ def title_block(lines, tb, W, H):
 
 
 # ---------------- one page ----------------
-def read_page(pdf, page_no, page):
-    W, H = float(page.width), float(page.height)          # displayed size (rotation applied)
-    lines = merge_slanted(text_lines(pdf, page_no), page)
+def read_page(page_no, page):
+    page.remove_rotation()                                 # coordinates as displayed, whatever the page rotation
+    W, H = float(page.rect.width), float(page.rect.height)
+    lines = text_lines(page)
     segs = segments(page)
     _, _, tb = frame_and_titleblock(W, H, segs)
     fields, tb_text = title_block(lines, tb, W, H)
     body = [l for l in lines if not inside(l["box"], tb)]
     titles = find_titles(body)
     views = []
-    for box in cluster(W, H, segs, body, [tb] if tb else []):
+    boxes = sorted(cluster(W, H, segs, body, [tb] if tb else []), key=lambda b: -(b[2] - b[0]) * (b[3] - b[1]))
+    boxes = [b for i, b in enumerate(boxes) if not any(inside(b, o, 2.0) for o in boxes[:i])]      # text inside an outline belongs to it
+    # a title standing clear below its view: join the title's cluster to the nearest cluster above it
+    for t in titles:
+        own = next((b for b in boxes if centre_in(t["box"], b)), None)
+        if own is None or (own[3] - own[1]) > (t["box"][3] - t["box"][1]) + 30:
+            continue                                        # the title already sits inside its view's cluster
+        above = [b for b in boxes if b is not own and b[3] <= own[1] + 2 and min(b[2], own[2]) - max(b[0], own[0]) > 0
+                 and own[1] - b[3] < 150 and not any(centre_in(o["box"], b) for o in titles)]
+        if above:
+            host = min(above, key=lambda b: own[1] - b[3])
+            boxes[boxes.index(host)] = [min(host[0], own[0]), min(host[1], own[1]), max(host[2], own[2]), max(host[3], own[3])]
+            boxes = [b for b in boxes if b is not own]
+    for box in boxes:
         inside_titles = [t for t in titles if centre_in(t["box"], box)]
         for vbox, t in split_by_titles(box, inside_titles):
             texts = [l for l in body if centre_in(l["box"], vbox)]
@@ -424,43 +437,34 @@ def write_index(sheets, out):
     (out / "index.md").write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("inputs", nargs="+", help="PDF files or a folder of PDFs")
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--prev", help="sheets.json of the previous revision: marks new / changed / same per sheet")
-    ap.add_argument("--no-thumbs", action="store_true")
-    a = ap.parse_args()
+def build_index(inputs, out, prev=None, thumbs=True):
     pdfs = []
-    for i in a.inputs:
+    for i in inputs:
         p = pathlib.Path(i)
         pdfs += sorted(p.rglob("*.pdf")) if p.is_dir() else [p]
-    out = pathlib.Path(a.out)
+    out = pathlib.Path(out)
     (out / "thumbs").mkdir(parents=True, exist_ok=True)
-    prev = {}
-    if a.prev:
-        for s in json.loads(pathlib.Path(a.prev).read_text(encoding="utf-8"))["sheets"]:
-            prev[s["titleblock"].get("dwg_no") or s["sheet"]] = s
+    old = {}
+    if prev:
+        for s in json.loads(pathlib.Path(prev).read_text(encoding="utf-8"))["sheets"]:
+            old[s["titleblock"].get("dwg_no") or s["sheet"]] = s
     sheets = []
     for pdf in pdfs:
-        with pdfplumber.open(pdf) as doc:
-            for n, page in enumerate(doc.pages, 1):
-                s = read_page(pdf, n, page)
-                s["file"] = str(pdf)
-                base = re.sub(r"[^A-Za-z0-9_.-]+", "_", s["titleblock"].get("dwg_no") or pdf.stem)
-                s["sheet"] = base if len(doc.pages) == 1 or s["titleblock"].get("dwg_no") else f"{base}_p{n}"
-                if a.prev:
-                    old = prev.get(s["titleblock"].get("dwg_no") or s["sheet"])
-                    s["changed"] = "new" if old is None else ("same" if old["hash"] == s["hash"] else
-                                                               f'changed (was rev {old["titleblock"].get("rev", "?")})')
-                if not a.no_thumbs:
-                    W, H = s["size_pt"]
-                    dpi = max(20, int(THUMB_PX / max(W, H) * 72))
-                    stem = out / "thumbs" / s["sheet"]
-                    subprocess.run(["pdftoppm", "-r", str(dpi), "-f", str(n), "-l", str(n), "-singlefile", "-png",
-                                    str(pdf), str(stem)], check=True)
-                    s["thumb"] = str(stem) + ".png"
-                sheets.append(s)
+        doc = pymupdf.open(pdf)
+        for n, page in enumerate(doc, 1):
+            s = read_page(n, page)
+            s["file"] = str(pdf)
+            base = re.sub(r"[^A-Za-z0-9_.-]+", "_", s["titleblock"].get("dwg_no") or pdf.stem)
+            s["sheet"] = base if len(doc) == 1 or s["titleblock"].get("dwg_no") else f"{base}_p{n}"
+            if prev:
+                o = old.get(s["titleblock"].get("dwg_no") or s["sheet"])
+                s["changed"] = "new" if o is None else ("same" if o["hash"] == s["hash"] else
+                                                         f'changed (was rev {o["titleblock"].get("rev", "?")})')
+            if thumbs:
+                W, H = s["size_pt"]
+                s["thumb"] = str(out / "thumbs" / (s["sheet"] + ".png"))
+                page.get_pixmap(dpi=max(20, int(THUMB_PX / max(W, H) * 72))).save(s["thumb"])
+            sheets.append(s)
     (out / "sheets.json").write_text(json.dumps({"sheets": sheets}, ensure_ascii=False), encoding="utf-8")
     write_index(sheets, out)
     size = (out / "index.md").stat().st_size
@@ -471,5 +475,60 @@ def main():
             print(f"  {s['sheet']}: {s['flag']}", file=sys.stderr)
 
 
-if __name__ == "__main__":
-    main()
+# ---------------- crop ----------------
+def _render(sheet, box, out, max_px, dpi, label, scale):
+    W, H = sheet["size_pt"]
+    x0, y0, x1, y1 = max(0, box[0]), max(0, box[1]), min(W, box[2]), min(H, box[3])
+    if not dpi:
+        dpi = int(min(300, max_px / max(x1 - x0, y1 - y0) * 72))
+    page = pymupdf.open(sheet["file"])[sheet["page"] - 1]
+    page.remove_rotation()
+    png = out / (re.sub(r"[^A-Za-z0-9_.-]+", "_", f'{sheet["sheet"]}_{label}_{dpi}dpi') + ".png")
+    pm = page.get_pixmap(dpi=dpi, clip=pymupdf.Rect(x0, y0, x1, y1))
+    pm.save(str(png))
+    note = f", 1 px = {scale * 25.4 / dpi:.2f} mm real (scale 1:{scale:g})" if scale else ""
+    print(f"{png}  {pm.width}x{pm.height} px, {dpi} dpi{note}, box {[round(v) for v in (x0, y0, x1, y1)]}")
+
+
+def crop(read_dir, view=None, find=None, box=None, sheet=None, pad=25, max_px=1400, dpi=None, part=None):
+    rd = pathlib.Path(read_dir)
+    sheets = json.loads((rd / "sheets.json").read_text(encoding="utf-8"))["sheets"]
+    if sheet:
+        sheets = [s for s in sheets if s["sheet"] == sheet]
+    out = rd / "crops"
+    out.mkdir(exist_ok=True)
+
+    def quarter(b):
+        if not part:
+            return b
+        mx, my = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+        ov = 0.06 * max(b[2] - b[0], b[3] - b[1])               # overlap so nothing is cut at the seam
+        return [b[0] if part[1] == "l" else mx - ov, b[1] if part[0] == "t" else my - ov,
+                mx + ov if part[1] == "l" else b[2], my + ov if part[0] == "t" else b[3]]
+
+    def scale_of(v):
+        m = re.match(r"1:(\d+(?:\.\d+)?)$", v.get("scale") or "")
+        return float(m.group(1)) if m else None
+
+    n = 0
+    for s in sheets:
+        if box:
+            _render(s, quarter(box), out, max_px, dpi, "box" + (part or ""), None)
+            n += 1
+            continue
+        for v in s["views"]:
+            if view:
+                if v["id"].lower() == view.lower():
+                    b = v["box"]
+                    _render(s, quarter([b[0] - pad, b[1] - pad, b[2] + pad, b[3] + pad]), out, max_px, dpi,
+                            "view" + v["id"] + (part or ""), scale_of(v))
+                    n += 1
+            else:
+                hits = [w["box"] for w in v["words"] if find.lower() in w["t"].lower()]
+                if hits:
+                    b = [min(h[0] for h in hits) - 90 - pad, min(h[1] for h in hits) - 90 - pad,
+                         max(h[2] for h in hits) + 90 + pad, max(h[3] for h in hits) + 90 + pad]
+                    _render(s, b, out, max_px, dpi, f'find_{find}_in_{v["id"]}', scale_of(v))
+                    n += 1
+    if not n:
+        sys.exit("nothing matched. Views: " + ", ".join(f'{s["sheet"]}: ' + " ".join(v["id"] for v in s["views"]) for s in sheets))
